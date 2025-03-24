@@ -6,6 +6,8 @@ IMPLEMENTATIONS = [
     #"IsolationForest",
     #"OneClassForest"
     #"NeuronalNetwork"
+    #"NeuronalNetworkLoss1"
+    #"NeuronalNetworkLoss"
     #"nn_imp"
     "Random"
     #"OneClassSVN"

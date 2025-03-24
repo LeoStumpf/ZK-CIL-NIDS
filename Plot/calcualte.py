@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from .plots import Plot_PrecisionRecall, Plot_TprFpr, Plot_TruePositivesRate
+from .plots import Plot_AUPRIN, Plot_TprFpr, Plot_AUPROUT, Plot_TruePositivesRate, Plot_DrawingProbability
 from sklearn.metrics import auc  # Import the auc function from sklearn
 import json
 
@@ -40,7 +40,7 @@ def load_dict_from_file(filename):
     return loaded_dict
 
 
-def plot_weights(y, lof_score, subfolder, Metadata, plot_infos):
+def plot_weights(y, lof_score, subfolder, Metadata, plot_infos, list_known):
     # Ensure the directory exists
     save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../04_pics/")
     save_path = os.path.join(save_path, subfolder)
@@ -50,9 +50,10 @@ def plot_weights(y, lof_score, subfolder, Metadata, plot_infos):
     sample_path = os.path.join(save_path, "samples")
     os.makedirs(sample_path, exist_ok=True)
     plot_infos["flow/samples"] = "samples"
-    generate_plots(y, lof_score, sample_path, plot_infos)
+    generate_plots(y, lof_score, sample_path, plot_infos, list_known)
 
     # Plot weights based on Flows
+    Metadata = Metadata.copy()
     Metadata["weights"] = Metadata
     Metadata["labels"] = y
 
@@ -64,15 +65,16 @@ def plot_weights(y, lof_score, subfolder, Metadata, plot_infos):
     sample_path = os.path.join(save_path, "flows")
     os.makedirs(sample_path, exist_ok=True)
     plot_infos["flow/samples"] = "flows"
-    generate_plots(grouped["labels"].to_numpy(), grouped["weights"].tolist(), sample_path, plot_infos)
+    generate_plots(grouped["labels"].to_numpy(), grouped["weights"].tolist(), sample_path, plot_infos, list_known)
 
 
 
-def generate_plots(y, lof_score, save_path, plot_infos):
-    scores = calculation(y, lof_score)
+def generate_plots(y, lof_score, save_path, plot_infos, list_known):
+    scores = calculation(y, lof_score, list_known)
 
     # Plot Precision-Recall Curve
-    Plot_PrecisionRecall(scores, save_path, plot_infos)
+    Plot_AUPRIN(scores, save_path, plot_infos)
+    Plot_AUPROUT(scores, save_path, plot_infos)
 
     # Plot_TprFpr
     Plot_TprFpr(scores, save_path, plot_infos)
@@ -80,92 +82,118 @@ def generate_plots(y, lof_score, save_path, plot_infos):
     # Plot_TruePositivesRate
     Plot_TruePositivesRate(scores, save_path, plot_infos)
 
+    # Plot_DrawingProbability
+    Plot_DrawingProbability(scores, save_path, plot_infos)
+
     # Raw measurements file
     path = os.path.join(save_path, f"Measurements_{plot_infos['flow/samples']}_{plot_infos['algorithm_name']}_{plot_infos['dataset_name']}.json")
     combine_and_save_dicts(scores, plot_infos, path)
 
 
-def calculation(y, lof_score):
-    y_true = np.array(y, dtype=str)
-
+def calculation(y, lof_score, list_known):
+    # Store values as NP
+    y = np.array(y, dtype=str)
     uncertainties = np.array(lof_score, dtype=np.float32)
+
+    # Create Bins with equal amount of things
     percentiles = np.linspace(0, 100, 99)
-    thresholds_ = np.percentile(uncertainties, percentiles)
+    thresholds = np.percentile(uncertainties, percentiles)
+    thresholds = np.unique(thresholds).tolist()
 
-    # Remove duplicate values to ensure meaningful bins
-    thresholds = np.unique(thresholds_).tolist()
+    # all the known classes are considered as the positive class
+    # and the unknown class is considered as the negative class
+    # except for AUPROUT
+    y_Actual_Postitive = np.isin(y, list_known)
+    y_Actual_Postitive_AUPROUT = ~y_Actual_Postitive
 
-    # thresholds = np.linspace(0, 1, 100)  # Define thresholds between 0 and 1
-
-    # Target classes (list of labels considered as "true")
-    target_labels = ["BENIGN"]
-
-    # Convert y_true and y_predict to binary (1 if in target_labels, 0 otherwise)
-    y_Actual_Postitive = (~np.isin(y_true, target_labels)).astype(int)
-
-    ##DEBUG
-    # Create the boolean mask where y_Actual_Positive == 1
-    mask = y_Actual_Postitive == 1
-
-    # Use the mask to filter the uncertainties array
-    uncertainties_filtered = uncertainties[mask]
-
+    # Initialize Scores
     precision_scores = []
     recall_scores = []
+    precision_AUPROUT_scores = []
+    recall_AUPROUT_scores = []
     tpr_scores = []
     fpr_scores = []
     true_samples = []
     pos_rates = []
+    detection_errors = []
     output = dict()
 
     for threshold in thresholds:
         y_Predicted_Positive = (uncertainties >= threshold)
-
-        # Compute TP, FP, FN based on conditions
-        true_positives = (y_Actual_Postitive == 1) & (y_Predicted_Positive == 1)
-        true_negatives = (y_Actual_Postitive == 0) & (y_Predicted_Positive == 0)
-        false_negatives = (y_Actual_Postitive == 1) & (y_Predicted_Positive == 0)
-        false_positives = (y_Actual_Postitive == 0) & (y_Predicted_Positive == 1)
-
-        tp = np.sum(true_positives)
-        fp = np.sum(false_positives)
-        fn = np.sum(false_negatives)
-        tn = np.sum(true_negatives)
-
         num_positive = np.sum(y_Predicted_Positive)
 
+        # Compute TP, FP, FN based on conditions
+        tp = np.sum( y_Actual_Postitive &  y_Predicted_Positive)
+        tn = np.sum(~y_Actual_Postitive & ~y_Predicted_Positive)
+        fp = np.sum(~y_Actual_Postitive &  y_Predicted_Positive)
+        fn = np.sum( y_Actual_Postitive & ~y_Predicted_Positive)
+
+        # Calculate scores
         precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0  # True Positive Rate (Recall)
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0  # False Positive Rate
         pos_rate = tp / num_positive
 
+        # compute AUPROUT scores
+        tp_AUPROUT = np.sum(y_Actual_Postitive_AUPROUT & y_Predicted_Positive)
+        fp_AUPROUT = np.sum(~y_Actual_Postitive_AUPROUT & y_Predicted_Positive)
+        fn_AUPROUT = np.sum(y_Actual_Postitive_AUPROUT & ~y_Predicted_Positive)
+        precision_AUPROUT = tp_AUPROUT / (tp_AUPROUT + fp_AUPROUT) if (tp_AUPROUT + fp_AUPROUT) > 0 else 1.0
+        recall_AUPROUT = tp_AUPROUT / (tp_AUPROUT + fn_AUPROUT) if (tp_AUPROUT + fn_AUPROUT) > 0 else 0.0
+
+        # Calculate detection error when TPR >= 0.95
+        detection_error = 0.5 * (1 - tpr) + 0.5 * fpr if tpr >= 0.95 else None
+
+        # Store values
         precision_scores.append(precision)
         recall_scores.append(recall)
         tpr_scores.append(tpr)
         fpr_scores.append(fpr)
         true_samples.append(num_positive)
         pos_rates.append(pos_rate)
-
-        # print(f"precision = {precision}, recall = {recall}")
+        precision_AUPROUT_scores.append(precision_AUPROUT)
+        recall_AUPROUT_scores.append(recall_AUPROUT)
+        detection_errors.append(detection_error)
 
     output["precision_scores"] = np.array(precision_scores)
     output["recall_scores"] = np.array(recall_scores)
+    output["precision_AUPROUT_scores"] = np.array(precision_AUPROUT_scores)
+    output["recall_AUPROUT_scores"] = np.array(recall_AUPROUT_scores)
     output["tpr_scores"] = np.array(tpr_scores)
     output["fpr_scores"] = np.array(fpr_scores)
-
+    output["detection_errors"] = np.array([de for de in detection_errors if de is not None])
+    output["detection_error"] = np.mean(output["detection_errors"])
     output["pos_rates"] = pos_rates
 
+    # Convert uncertainties to weights
+    # If there are negative values, shift all values by adding the absolute minimum
+    min_value = np.min(uncertainties)
+    if min_value < 0:
+        uncertainties_W = uncertainties + abs(min_value)
+    else:
+        uncertainties_W = uncertainties
+
+    # Normalize to [0, 1]
+    weights = uncertainties_W / np.sum(uncertainties_W)
+
+    # Probability of drawing a negative sample
+    negative_indices = ~y_Actual_Postitive
+    P_negative = np.sum(weights[negative_indices])
+
+    # Calculate probabilities for 1 to max_samples draws
+    output["probabilitie_drawing"] = [1 - (1 - P_negative) ** k for k in range(1, 200 + 1)]
+
     # Calculate the Area Under the Precision/Recall Curve (AUPRC)
-    output["auprc"] = auc(output["recall_scores"], output["precision_scores"])
+    sorted_indices = np.argsort(output["recall_scores"])
+    output["AUPRIN"] = auc(output["recall_scores"][sorted_indices], output["precision_scores"][sorted_indices])
+
+    sorted_indices = np.argsort(output["recall_AUPROUT_scores"])
+    output["AUPROUT"] = auc(output["recall_AUPROUT_scores"][sorted_indices], output["precision_AUPROUT_scores"][sorted_indices])
 
     # Calculate the Area Under the ROC Curve (AUROC)
-    output["auroc"] = auc(output["fpr_scores"], output["tpr_scores"])
-
-    # Sort recall in ascending order to ensure correct AUC computation
-    sorted_indices = np.argsort(output["recall_scores"])
-    output["recall_sorted"] = output["recall_scores"][sorted_indices]
-    output["precision_sorted"] = output["precision_scores"][sorted_indices]
+    sorted_indices = np.argsort(output["fpr_scores"])
+    output["AUROC"] = auc(output["fpr_scores"][sorted_indices], output["tpr_scores"][sorted_indices])
 
     # Select points to annotate: first, last, and two middle ones
     output["annotated_points"] = list()

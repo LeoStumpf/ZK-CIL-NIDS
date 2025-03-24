@@ -35,11 +35,12 @@ class TestPredictFitFunctions(unittest.TestCase):
                 for test_dataset in self.day_datasets:
                     # Load training data: features (X_train), labels (y_train), and metadata
                     X_train, y_train, _ = load_data(test_dataset, "Train")
+                    list_known = list(set(y_train))
 
                     # Train the model using the training data
                     start_time_fit = time.time()  # Start timer for fit
                     model = fit(X_train, y_train)
-                    #model = fit(X[:200, :], y[:200])
+                    #model = fit(X_train[:2000, :], y_train[:2000])
                     end_time_fit = time.time()  # End timer for fit
                     execution_time_fit = end_time_fit - start_time_fit  # Calculate fit time
 
@@ -50,7 +51,7 @@ class TestPredictFitFunctions(unittest.TestCase):
                     # Use the trained model to make predictions on the test data
                     start_time_predict = time.time()  # Start timer for predict
                     weights = predict(X_test, Metadata, model)
-                    #weights = predict(X[:200, :], Metadata[:200], model)
+                    #weights = predict(X_test[:200, :], Metadata[:200], model)
                     end_time_predict = time.time()  # End timer for predict
                     execution_time_predict = end_time_predict - start_time_predict  # Calculate predict time
 
@@ -62,8 +63,8 @@ class TestPredictFitFunctions(unittest.TestCase):
                         "execution_time_predict": format_time(execution_time_predict)
                     }
 
-                    plot_weights(y_test, weights, module_name, Metadata, plot_infos)
-                    #plot_weights(y[:200], weights, module_name, Metadata[:200])
+                    plot_weights(y_test, weights, module_name, Metadata, plot_infos, list_known)
+                    #plot_weights(y_test[:200], weights, module_name, Metadata[:200], plot_infos, list_known)
                     del X_test, y_test, Metadata
 
 # Entry point to run the tests
