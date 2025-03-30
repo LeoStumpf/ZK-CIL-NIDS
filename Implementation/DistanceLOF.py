@@ -5,6 +5,14 @@ from collections import Counter
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from cuml.neighbors import NearestNeighbors
+import gc
+import sys
+from pympler import asizeof
+
+def print_memory_usage(cluster_dict):
+    for key, value in cluster_dict.items():
+        size = asizeof.asizeof(value)  # Use pympler's asizeof to capture full object size
+        print(f"{key}: {size} bytes")
 
 def fit(X, y):
     """
@@ -40,7 +48,8 @@ def fit(X, y):
         X_train = X[label_mask]
 
         # Set parameters for NearestNeighbors
-        nn_learn = min(label_count - 10, 1000)  # Number of neighbors for training
+        #nn_learn = min(label_count - 10, 1000)  # Number of neighbors for training
+        nn_learn = 300
         nn_test = 20  # Number of neighbors for testing
         threshold = 0.5  # Threshold for outlier detection
         label = str(label)  # Convert label to string for storage
@@ -52,45 +61,81 @@ def fit(X, y):
         stds = np.std(X_train, axis=0) + 1e-10  # Add small value to avoid division by zero
 
         # Scale the training data
+        print("Scale the training data")
         X_scaled = (X - means) / stds
-        X_train_scaled_np = X_scaled.astype(cp.float32)
-        X_train_scaled = cp.asarray(X_train_scaled_np)
+        X_train_scaled_np = X_scaled.astype(np.float32)
+        del X_train, X_scaled
+        gc.collect()
 
+        #X_train_scaled = cp.asarray(X_train_scaled_np)
+        #del X_train_scaled_np
+        gc.collect()
+
+        print("train model")
         # Fit the NearestNeighbors model to the scaled training data
+        X_train_scaled_cp = cp.asarray(X_train_scaled_np)
         nn_model = NearestNeighbors(n_neighbors=nn_learn + 1, algorithm='brute', metric='manhattan')
-        nn_model.fit(X_train_scaled)
-        distances, indices = nn_model.kneighbors(X_train_scaled)
+        nn_model.fit(X_train_scaled_cp)
+        distances, indices = nn_model.kneighbors(X_train_scaled_cp)
+        del X_train_scaled_cp
+        distances = distances.get()
+        indices = indices.get()
+        cp._default_memory_pool.free_all_blocks()
+
+        del nn_model
 
         # Initialize arrays to store min and max values for each sample
-        min_values = cp.zeros((X_train_scaled.shape[0], X_train_scaled.shape[1]))
-        max_values = cp.zeros((X_train_scaled.shape[0], X_train_scaled.shape[1]))
+        min_values = np.zeros((X_train_scaled_np.shape[0], X_train_scaled_np.shape[1]))
+        max_values = np.zeros((X_train_scaled_np.shape[0], X_train_scaled_np.shape[1]))
 
+        print("store data")
         # Find breakpoints in distances to identify local neighborhoods
         break_indices = []
-        for i in range(X_train_scaled.shape[0]):
+        for i in range(X_train_scaled_np.shape[0]):
             start_index = 2
             dist_diff = distances[i, start_index:] - distances[i, start_index - 1:-1]
-            percent_increase = dist_diff / distances[i, start_index - 1:-1]
+            percent_increase = dist_diff / (distances[i, start_index - 1:-1] + 1e-10)
 
             # Find the index where the percentage increase exceeds the threshold
-            break_index = (cp.argmax(percent_increase > threshold) + start_index
-                           if cp.any(percent_increase > threshold)
+            break_index = (np.argmax(percent_increase > threshold) + start_index
+                           if np.any(percent_increase > threshold)
                            else indices.shape[1] - 1)
             break_indices.append(int(break_index))
 
             # Calculate min and max values across the neighbors
-            min_values[i] = cp.min(X_train_scaled[indices[i, 0:break_index]], axis=0)
-            max_values[i] = cp.max(X_train_scaled[indices[i, 0:break_index]], axis=0)
+            min_values[i] = np.min(X_train_scaled_np[indices[i, 0:break_index]], axis=0)
+            max_values[i] = np.max(X_train_scaled_np[indices[i, 0:break_index]], axis=0)
 
-        del indices  # Free memory
+
+
+        if label == "BENIGN":
+            #mask = np.array(break_indices)>30
+            # match the len of mask its length
+            mask = np.zeros(len(break_indices), dtype=bool)
+
+            # Set every fith entry to True
+            mask[::5] = True
+
+            X_train_scaled_np = X_train_scaled_np[mask]
+            min_values = min_values[mask]
+            max_values = max_values[mask]
+
+            print(f"Reduced length = {len(X_train_scaled_np)}")
+            ...
+
+        # Free memory
+        mean_distances = np.mean(distances, axis=1)
+        del indices, distances
+        cp._default_memory_pool.free_all_blocks()
+        gc.collect()
 
         # Calculate local reachability density
-        mean_distances = np.mean(distances, axis=1)
+        mean_distances = np.mean(min_values, axis=1)
         local_reachability_density = mean_distances + 1e-10
 
         # Fit a NearestNeighbors model for testing
-        nn = NearestNeighbors(n_neighbors=nn_test, algorithm='brute', metric='manhattan')
-        nn.fit(X_train_scaled)
+        nn = NearestNeighbors(n_neighbors=nn_test, algorithm='brute', metric='manhattan', handle=None)
+        nn.fit(X_train_scaled_np)
 
         # Store LOF model and associated data
         lof_clusters[number] = {
@@ -107,6 +152,19 @@ def fit(X, y):
             'std': stds,
             'label': label
         }
+
+        print("Cycle:", number)
+        print_memory_usage(lof_clusters[number])
+
+        # Optional: Print total size of the cluster
+        total_size = asizeof.asizeof(lof_clusters[number])
+        print(f"Total size of current cluster: {total_size} bytes")
+
+        # Free memory after storing the model
+        del min_values, max_values, X_train_scaled_np
+        cp._default_memory_pool.free_all_blocks()
+        gc.collect()
+        print("done. next run")
 
     return lof_clusters, rf_model
 
@@ -170,7 +228,7 @@ def cluster_data(data):
     normalized_data = cp.nan_to_num(normalized_data, nan=0)
 
     # Perform clustering using HDBSCAN
-    min_samples = 100  # Minimum number of samples per cluster
+    min_samples = 50  # Minimum number of samples per cluster
     print(f"Running HDBSCAN with min_samples={min_samples}")
     clustering_model = cuml.HDBSCAN(min_samples=min_samples, output_type='cupy', metric='euclidean')
     cluster_labels = clustering_model.fit_predict(normalized_data)
@@ -233,6 +291,9 @@ def predict(X, Metadata, model):
 
     # Perform clustering on the input data
     cluster_index = cluster_data(X_cp).tolist()
+    del(X_cp)
+
+    print("done with clustering")
 
     # Create a dictionary to store cluster information
     cluster_dict = {}

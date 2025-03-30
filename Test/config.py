@@ -9,10 +9,10 @@ IMPLEMENTATIONS = [
     #"NeuronalNetworkLoss1"
     #"NeuronalNetworkLoss"
     #"nn_imp"
-    "Random"
     #"OneClassSVN"
-    #"EnergyFlowClassifier"
+    "EnergyFlowClassifier"
     #"DistanceLOF"
+    #"Random"
 ]
 
 base_path = "/home/leo/ZK-CIL-NIDS/dataset"
