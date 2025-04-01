@@ -10,7 +10,7 @@ IMPLEMENTATIONS = [
     #"NeuronalNetworkLoss"
     #"nn_imp"
     #"OneClassSVN"
-    "EnergyFlowClassifier"
+    #"EnergyFlowClassifier"
     #"DistanceLOF"
     #"Random"
 ]

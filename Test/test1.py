@@ -5,6 +5,7 @@ import unittest
 import time
 import gc
 import cupy as cp
+import torch
 
 # Define a test class for testing prediction and fitting functions
 class TestPredictFitFunctions(unittest.TestCase):
@@ -21,7 +22,8 @@ class TestPredictFitFunctions(unittest.TestCase):
         "TrainDay0_Heartbleed",
         "TrainDay0_Infiltration",
         "TrainDay0_SSHPatator",
-        "TrainDay0_SSHPatator",
+        "TrainDay0_TestBotnet",
+        "TrainDay0_PortScan",
         "TrainDay0_Web"
     ]
 
@@ -57,7 +59,7 @@ class TestPredictFitFunctions(unittest.TestCase):
                     execution_time_fit = end_time_fit - start_time_fit  # Calculate fit time
 
                     # Clear training data from CPU and GPU memory
-                    del X_train, y_train
+                    del X_train, y_train, _
                     cp._default_memory_pool.free_all_blocks()  # Free CUDA memory
                     gc.collect()  # Force garbage collection
 
@@ -83,10 +85,21 @@ class TestPredictFitFunctions(unittest.TestCase):
                     plot_weights(y_test, weights, module_name, Metadata, plot_infos, list_known)
                     #plot_weights(y_test[:200], weights, module_name, Metadata[:200], plot_infos, list_known)
 
-                    # Cleanup after each dataset
-                    del X_test, y_test, Metadata, weights, model
-                    cp._default_memory_pool.free_all_blocks()  # Clear CUDA cache
-                    gc.collect()  # Collect garbage
+                    # Move model to CPU before deletion
+                    try:
+                        model.to("cpu")
+                    except:
+                        ...
+                    del model
+
+                    # Manually delete all tensors
+                    del X_test, y_test, Metadata, weights
+
+                    # Free memory
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    cp._default_memory_pool.free_all_blocks()
+                    torch.cuda.synchronize()
 
 # Entry point to run the tests
 if __name__ == "__main__":

@@ -11,7 +11,8 @@ LABEL_MAPPING = {
     'Portscan': 6,
     'FTP-Patator': 7,
     'SSH-Patator': 8,
-    'Unknown': 9
+    'Heartbleed': 9,
+    'Unknown': 10
 }
 
 def encode_labels(y):

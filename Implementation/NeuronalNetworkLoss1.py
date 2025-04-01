@@ -27,6 +27,11 @@ l2_decay=0.0001
 rank_rate=0.1
 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class IndexedTensorDataset(Data.TensorDataset):
+    def __getitem__(self, index):
+        data, label = super().__getitem__(index)
+        return data, label, index  # Return index as well
+
 class NN_Model(torch.nn.Module):
     """
     A Convolutional Neural Network (CNN) model for classification tasks.
@@ -263,19 +268,21 @@ def mmd_rbf_noaccelerate(source, target, kernel_mul=2.0, kernel_num=5, fix_sigma
     loss = torch.mean(XX + YY - XY -YX)
     return loss
 
-def get_source_loader( data_source_np0, label_sources_np0):
+BATCH_SIZE = 512
+
+def get_source_loader( data_source_np0, label_sources_np0, shuffle=False):
     data_source = torch.from_numpy(data_source_np0)
     label_source = torch.from_numpy(label_sources_np0)
     torch_source_dataset = Data.TensorDataset(data_source, label_source)
     source_loader = Data.DataLoader(
         dataset=torch_source_dataset,  # torch TensorDataset format
         batch_size=BATCH_SIZE,  # mini batch size
-        shuffle=True,  # 要不要打乱数据 (打乱比较好)
+        shuffle=shuffle,  # 要不要打乱数据 (打乱比较好)
         num_workers=2,  # 多线程来读数据
     )
     return source_loader
 
-BATCH_SIZE = 512
+
 LEARNING_RATE = 0.001
 momentum = 0.9
 l2_decay = 5e-4
@@ -285,7 +292,7 @@ def train_sharedcnn(epoch,model,rank_rate,max_threshold,data,label,N_class, lamd
     correct = 0
     loss = torch.nn.CrossEntropyLoss()
     model.train()
-    train_loader = get_source_loader(data,label)
+    train_loader = get_source_loader(data,label, shuffle=True)
     len_train_dataset = len(train_loader.dataset)
     len_train_loader = len(train_loader)
     iter_train = iter(train_loader)
@@ -356,6 +363,8 @@ def fit(X, y, num_epochs=50, batch_size=32, learning_rate=0.001):
     Returns:
     - model: Trained CNN model.
     """
+    min_max_scaler = MinMaxScaler()
+
     y = encode_labels(y)
 
     # Normalize the data
@@ -414,6 +423,8 @@ def predict(X, Metadata, model):
     Returns:
     - anomaly_scores: Anomaly scores for each sample in X. Higher scores indicate higher likelihood of being an outlier.
     """
+    model.eval()
+
     # Normalize the data
     min_max_scaler.fit(X)
     X_norm = min_max_scaler.transform(X)
@@ -424,25 +435,28 @@ def predict(X, Metadata, model):
 
     loss = torch.nn.CrossEntropyLoss()
     label = np.zeros(X.shape[0])
-    test_loader = get_source_loader(X_final, label)
+    test_loader = get_source_loader(X_final, label, shuffle=False)
     len_test_dataset = len(test_loader.dataset)
 
     last_centroids = torch.zeros(len(LABEL_MAPPING), len(LABEL_MAPPING))
 
+    weights = list()
+
     for data_test,label_test in test_loader:
-        data_test, label_test = Variable(data_test).float().to(device),Variable(label_test).type(torch.LongTensor).to(device)
-        test_av,test_pred, _, _ = model(data_test,data_test)
+        with torch.no_grad():
+            data_test, label_test = Variable(data_test).float().to(device),Variable(label_test).type(torch.LongTensor).to(device)
+            test_av,test_pred, _, _ = model(data_test,data_test)
 
-        centroid = cal_centroid(label_test.cpu(), test_av.cpu(), len(LABEL_MAPPING), last_centroids)
-        last_centroids = centroid
+            centroid = cal_centroid(label_test.cpu(), test_av.cpu(), len(LABEL_MAPPING), last_centroids)
+            last_centroids = centroid
 
-        centroids = torch.load('CICIDS_centroids20200601.pt')
+            centroids = torch.load('CICIDS_centroids20200601.pt')
 
-        pred = test_pred.max(1)[1]
-        dist_to_its_centriod, min_dist_class_index = cal_min_dis_to_centroid(pred=test_av.cpu(), centroid=centroids)
+            pred = test_pred.max(1)[1]
+            dist_to_its_centriod, min_dist_class_index = cal_min_dis_to_centroid(pred=test_av.cpu(), centroid=centroids)
 
-        weights = test_pred[:,LABEL_MAPPING['Unknown']].cpu() + dist_to_its_centriod
-
+            weights_this = test_pred[:,LABEL_MAPPING['Unknown']].cpu() + dist_to_its_centriod
+            weights.extend(weights_this.numpy().tolist())
 
     # Return the probability of the "Unknown" class as anomaly scores
-    return weights.detach().numpy()
+    return weights
