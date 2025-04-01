@@ -8,7 +8,7 @@ IMPLEMENTATIONS = [
     #"NeuronalNetwork"
     #"NeuronalNetworkLoss1"
     #"NeuronalNetworkLoss"
-    #"nn_imp"
+    "NeuronalNetwork"
     #"OneClassSVN"
     #"EnergyFlowClassifier"
     #"DistanceLOF"
