@@ -15,6 +15,38 @@ def _generate_mirrored(samples_per_method, data):
     return 1 - data[idx]  # Geometric mirroring
 
 
+def _generate_histogram_based(samples_per_method, data, bins=50):
+    """
+    Generates outliers using complementary histograms.
+
+    Parameters:
+    - samples_per_method: Number of outliers to generate
+    - data: Input data (cupy array)
+    - bins: Number of bins for histogram estimation
+
+    Returns:
+    - cupy array of generated outliers
+    """
+    n_samples, n_features = data.shape
+    hist_outliers = []
+
+    for f in range(n_features):
+        hist, bin_edges = cp.histogram(data[:, f], bins=bins, density=True)
+        hist = hist / cp.sum(hist)  # Normalize histogram
+        complementary_hist = 1 - hist  # Complementary histogram
+        complementary_hist /= cp.sum(complementary_hist)  # Re-normalize
+
+        sampled_bins = cp.random.choice(len(bin_edges) - 1, size=samples_per_method, p=complementary_hist)
+
+        # Sample uniformly from the selected bin range
+        outlier_feature_values = bin_edges[sampled_bins] + cp.random.uniform(0, 1, samples_per_method) * (
+                bin_edges[sampled_bins + 1] - bin_edges[sampled_bins]
+        )
+        hist_outliers.append(outlier_feature_values)
+
+    return cp.column_stack(hist_outliers)
+
+
 def _generate_directional(samples_per_method, n_features, data_tensor, device, n_samples, batch_size, multiplier=1.2):
     """Process one safe batch"""
     # Calculate distances in chunks
@@ -41,7 +73,7 @@ def _generate_directional(samples_per_method, n_features, data_tensor, device, n
     return cp.asarray(candidates[mask].cpu().numpy())
 
 
-def generate_outliers(data, min_samples=1000, batch_size=1000, target_ratio=0.5):
+def generate_outliers(data, target_outliers=None):
     """
     Generates outliers scaled to input data size with balanced methods.
 
@@ -54,34 +86,47 @@ def generate_outliers(data, min_samples=1000, batch_size=1000, target_ratio=0.5)
     Returns:
     - cupy array of combined outliers
     """
+    min_samples = 1000
+    batch_size = 1000
+    target_ratio = 0.5
+
     # Convert to PyTorch tensor on GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data_tensor = torch.from_numpy(cp.asnumpy(data)).float().to(device)
     n_samples, n_features = data_tensor.shape
 
     # Calculate target samples based on input size and ratio
-    target_outliers = max(min_samples, int(n_samples * target_ratio))
-    target_outliers = target_outliers = int(min(target_outliers, 1e6)) # limit number of outliers due to memory constraints
+    if target_outliers is None:
+        target_outliers = max(min_samples, int(n_samples * target_ratio))
+        target_outliers = int(min(target_outliers, 1e6)) # limit number of outliers due to memory constraints
     samples_per_method = max(min_samples, int(target_outliers / 3))  # Split across 3 methods
 
     # Generate outliers using all three methods
     dir_outliers = _generate_directional(
-        min(samples_per_method, target_outliers),
+        int(min(samples_per_method, target_outliers)),
         n_features, data_tensor, device, n_samples, batch_size
     )
 
+    remaining = target_outliers - len(dir_outliers)
+    hist_outliers = _generate_histogram_based(
+        int(min(samples_per_method, max(0, remaining))),
+        data,
+        bins=50
+    )
+
+    remaining = remaining - len(hist_outliers)
     mirrored_outliers = _generate_mirrored(
-        min(samples_per_method, max(0, target_outliers - len(dir_outliers))),
+        int(min(samples_per_method/2, max(0, remaining))),
         data
     )
 
-    remaining = target_outliers - len(dir_outliers) - len(mirrored_outliers)
+    remaining = remaining - len(mirrored_outliers)
     rand_outliers = _generate_random(
-        max(0, remaining),
+        int(max(0, remaining)),
         n_features
     )
 
     # Combine and trim to exact target
-    combined = cp.vstack([dir_outliers, rand_outliers, mirrored_outliers])
+    combined = cp.vstack([dir_outliers, rand_outliers, hist_outliers, mirrored_outliers])
     return combined[:target_outliers]  # Ensure exact count
 
