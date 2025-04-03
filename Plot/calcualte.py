@@ -54,7 +54,7 @@ def plot_weights(y, lof_score, subfolder, Metadata, plot_infos, list_known):
 
     # Plot weights based on Flows
     Metadata = Metadata.copy()
-    Metadata["weights"] = Metadata
+    Metadata["weights"] = lof_score
     Metadata["labels"] = y
 
     grouped = Metadata.groupby("flow_index").agg({
