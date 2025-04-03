@@ -1,3 +1,4 @@
+import numpy
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,6 +10,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from Helper.LabelEncoder import encode_labels, LABEL_MAPPING
 from Helper.GenerateOutlier import generate_outliers
 import math
+import torch.utils.data as Data
 
 # Initialize a MinMaxScaler for normalizing the data
 min_max_scaler = MinMaxScaler()
@@ -25,12 +27,17 @@ l2_decay=0.0001
 rank_rate=0.1
 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class IndexedTensorDataset(Data.TensorDataset):
+    def __getitem__(self, index):
+        data, label = super().__getitem__(index)
+        return data, label, index  # Return index as well
+
 class NN_Model(torch.nn.Module):
     """
     A Convolutional Neural Network (CNN) model for classification tasks.
     The model is designed to handle 10x10 input images with 1 channel.
     """
-    def __init__(self, N_class=4):
+    def __init__(self, N_class=len(LABEL_MAPPING)):
         """
         Initializes the CNN model.
 
@@ -108,6 +115,21 @@ class NN_Model(torch.nn.Module):
         return av, av  # Return logits directly (no sigmoid applied)
 
 
+class SharedCNN(torch.nn.Module):
+    def __init__(self,N_class):
+        super(SharedCNN,self).__init__()
+        self.sharedNet = cnn(N_class)
+
+    def forward(self, indata, outdata):
+        av_indata, pred_indata = self.sharedNet(indata)
+        av_outdata, pred_outdata = self.sharedNet(outdata)
+        return av_indata, pred_indata, av_outdata, pred_outdata
+
+def cnn(N_class):
+    # new dataset CICIDS2017
+    model = NN_Model(N_class)
+    return model
+
 def fisher_loss(pred, centroid):
     """
     Computes the Fisher loss, which consists of within-class scatter (Sw) and between-class scatter (Sb).
@@ -148,75 +170,6 @@ def mmd_loss(source_features, target_features):
     return mmd_loss
 
 
-def train_sharedcnn(epoch, model, rank_rate, max_threshold, data, label, N_class):
-    """
-    Trains the CNN model using Fisher loss and MMD loss.
-
-    Parameters:
-    - epoch: Current epoch number.
-    - model: The CNN model.
-    - rank_rate: Rank rate for threshold calculation.
-    - max_threshold: Maximum threshold values for each class.
-    - data: Training data.
-    - label: Training labels.
-    - N_class: Number of classes.
-
-    Returns:
-    - max_threshold: Updated maximum threshold values.
-    """
-    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=L2_DECAY)
-    criterion = nn.CrossEntropyLoss()
-    model.train()
-
-    # Convert data to PyTorch tensors
-    X_tensor = torch.tensor(data, dtype=torch.float32)
-    y_tensor = torch.tensor(label, dtype=torch.long)
-
-    # Create DataLoader
-    dataset = TensorDataset(X_tensor, y_tensor)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-
-    # Initialize centroids
-    centroids = torch.zeros(N_class, N_class).to(DEVICE)
-
-    for batch_idx, (data_train, label_train) in enumerate(dataloader):
-        data_train, label_train = data_train.to(DEVICE), label_train.to(DEVICE)
-
-        # Add noise to data for MMD loss
-        noise = torch.randn_like(data_train) * 0.1
-        out_data = data_train + noise
-
-        optimizer.zero_grad()
-
-        # Forward pass
-        train_av, train_pred = model(data_train)
-        outdata_av, _ = model(out_data)
-
-        # Compute Fisher loss
-        Sw, Sb = fisher_loss(train_av, centroids)
-        fisherloss = LAMBDA * Sw - ALPHA * Sb
-
-        # Compute MMD loss
-        mmd_loss_value = mmd_loss(train_av, outdata_av)
-
-        # Compute cross-entropy loss
-        cross_loss = criterion(train_pred, label_train)
-
-        # Total loss
-        total_loss = cross_loss + fisherloss + BETA * mmd_loss_value
-
-        # Backward pass and optimization
-        total_loss.backward()
-        optimizer.step()
-
-        # Update centroids
-        with torch.no_grad():
-            for cls in range(N_class):
-                cls_mask = label_train == cls
-                if cls_mask.any():
-                    centroids[cls] = train_av[cls_mask].mean(dim=0)
-
-    return max_threshold
 
 def cal_centroid(label,pred,N_class,last_centroids):
     label_pred = torch.argmax(pred,1).view(-1).type(torch.LongTensor)
@@ -315,6 +268,87 @@ def mmd_rbf_noaccelerate(source, target, kernel_mul=2.0, kernel_num=5, fix_sigma
     loss = torch.mean(XX + YY - XY -YX)
     return loss
 
+BATCH_SIZE = 512
+
+def get_source_loader( data_source_np0, label_sources_np0, shuffle=False):
+    data_source = torch.from_numpy(data_source_np0)
+    label_source = torch.from_numpy(label_sources_np0)
+    torch_source_dataset = Data.TensorDataset(data_source, label_source)
+    source_loader = Data.DataLoader(
+        dataset=torch_source_dataset,  # torch TensorDataset format
+        batch_size=BATCH_SIZE,  # mini batch size
+        shuffle=shuffle,  # 要不要打乱数据 (打乱比较好)
+        num_workers=2,  # 多线程来读数据
+    )
+    return source_loader
+
+
+LEARNING_RATE = 0.001
+momentum = 0.9
+l2_decay = 5e-4
+# train with fisher loss and KL loss
+def train_sharedcnn(epoch,model,rank_rate,max_threshold,data,label,N_class, lamda, alpha, beta):
+    optimizer = torch.optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=momentum, weight_decay=l2_decay)
+    correct = 0
+    loss = torch.nn.CrossEntropyLoss()
+    model.train()
+    train_loader = get_source_loader(data,label, shuffle=True)
+    len_train_dataset = len(train_loader.dataset)
+    len_train_loader = len(train_loader)
+    iter_train = iter(train_loader)
+    num_iter = len_train_loader
+
+    last_centroids = torch.load('CICIDS_centroids.pt')
+    for i in range(1, num_iter):
+        data_train, label_train = next(iter_train)
+        noise = torch.FloatTensor(data_train.size(0),data_train.size(1), data_train.size(2), data_train.size(3)).normal_(0, 1)
+        out_data = data_train.float() + noise
+        data_train, label_train = Variable(data_train).float().to(device), Variable(label_train).type(
+            torch.LongTensor).to(device)
+        out_data = Variable(out_data).float().to(device)
+        with torch.no_grad():
+            last_centroids = Variable(last_centroids)
+        optimizer.zero_grad()
+        train_av, train_pred, outdata_av, outdata_pred = model(data_train,out_data)
+        centroid = cal_centroid(label_train.cpu(), train_av.cpu(), N_class, last_centroids)
+        last_centroids.data = centroid
+        Sw, Sb = fisher_loss(pred=train_av.cpu(), centroid=centroid)
+        threshold = cal_threshold(label=label_train.cpu(), pred=train_av.cpu(), centroid=centroid, rank_rate=rank_rate)
+        cross_loss = loss(train_pred, label_train)
+        sw_lamda= (lamda.to(device)) * (Sw.to(device))
+        sb_alpha = ((lamda * alpha).to(device)) * (Sb.to(device))
+        fisherloss = sw_lamda - sb_alpha
+        KL_loss_nobeta = mmd_rbf_noaccelerate(outdata_av,train_av)
+        KL_loss = (beta.to(device))* KL_loss_nobeta
+        Loss = cross_loss + fisherloss - KL_loss
+        pred = train_pred.max(1)[1]
+        correct += pred.eq(label_train.data.view_as(pred)).cpu().sum()
+        Loss.backward()
+        optimizer.step()
+    for m in range(threshold.size(0)):
+        if threshold[m] > max_threshold[m]:
+            max_threshold[m] = threshold[m]
+    torch.save(last_centroids.data, 'CICIDS_centroids.pt')
+    Accuracy = 100. * correct.type(torch.FloatTensor) / len_train_dataset
+    print(
+        'Train Epoch:{}\tLoss: {:.6f}\tcross_loss: {:.6f}\tfisherloss: {:.6f}\tSw: {:.6f}\tSb: {:.6f}\tSw_lamda: {:.6f}\tSb_alpha: {:.6f}\tMMD: {:.6f}\tKLloss: {:.6f}\tAccuracy: {:.4f}'.format(
+            epoch, Loss, cross_loss, fisherloss, Sw, Sb, sw_lamda, sb_alpha, KL_loss_nobeta, KL_loss, Accuracy))
+    return max_threshold
+
+def cal_dist_to_centroids(pred,centroid):
+    dist = []
+    for i in range(centroid.size(0)):
+        dist_to_centroid = ((pred-centroid[i,])**2).sum(1)
+        dist.append(dist_to_centroid)
+    dist_to_centroids = torch.stack(dist,dim=1)
+    return dist_to_centroids
+
+def cal_min_dis_to_centroid(pred,centroid):
+    all_distances = cal_dist_to_centroids(pred=pred, centroid=centroid)
+    dist_to_its_centriod = torch.min(all_distances, dim=1)[0]
+    min_dist_class_index = torch.min(all_distances,dim=1)[1]
+    return dist_to_its_centriod,min_dist_class_index
+
 def fit(X, y, num_epochs=50, batch_size=32, learning_rate=0.001):
     """
     Trains the CNN model on the input data.
@@ -329,19 +363,9 @@ def fit(X, y, num_epochs=50, batch_size=32, learning_rate=0.001):
     Returns:
     - model: Trained CNN model.
     """
-    # Convert input data to CuPy array
-    X_cp = cp.array(X)
+    min_max_scaler = MinMaxScaler()
 
-    # Augment data with outliers
-    outliers = generate_outliers(X_cp)
-
-    # Create labels for inliers and outliers
-    labels_inliers = cp.array(encode_labels(y))
-    labels_outliers = cp.array(encode_labels(np.full(outliers.shape[0], "Unknown", dtype=object)))
-
-    # Stack the data and labels
-    X = cp.asnumpy(cp.vstack((X_cp, outliers)))
-    y = cp.asnumpy(cp.hstack((labels_inliers, labels_outliers)))
+    y = encode_labels(y)
 
     # Normalize the data
     min_max_scaler.fit(X)
@@ -352,20 +376,26 @@ def fit(X, y, num_epochs=50, batch_size=32, learning_rate=0.001):
     X_final = X_padded.reshape(X.shape[0], 1, 10, 10)  # Shape: (samples, channels, 10, 10)
 
     # Convert to PyTorch tensors
-    X_tensor = torch.tensor(X_final, dtype=torch.float32)
-    y_tensor = torch.tensor(y, dtype=torch.long)
+    #X_tensor = torch.tensor(X_final, dtype=torch.float32)
+    #y_tensor = torch.tensor(y, dtype=torch.long)
 
     # Create DataLoader
-    dataset = torch.utils.data.TensorDataset(X_tensor, y_tensor)
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    #dataset = torch.utils.data.TensorDataset(X_tensor, y_tensor)
+    #train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     # Initialize model, optimizer, and loss function
-    model = NN_Model(len(LABEL_MAPPING)).to(device)
+    #model = NN_Model(len(LABEL_MAPPING)).to(device)
+    model = SharedCNN(len(LABEL_MAPPING)).to(device)
+    #model = models.SharedCNN(N_class1).to(device)
+
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=l2_decay)
     criterion = nn.CrossEntropyLoss()
 
     # Init centroids
-    last_centroids = torch.zeros(len(LABEL_MAPPING), X_tensor.size(1)).to(device)
+
+    centroids_zeros = torch.zeros(len(LABEL_MAPPING), len(LABEL_MAPPING))
+    torch.save(centroids_zeros, 'CICIDS_centroids20200601.pt')
+    torch.save(centroids_zeros, 'CICIDS_centroids.pt')
 
     # Training loop
     for epoch in range(num_epochs):
@@ -374,64 +404,14 @@ def fit(X, y, num_epochs=50, batch_size=32, learning_rate=0.001):
         alpha = torch.tensor(0.0001 * (math.exp(-5 * (epoch / num_epochs))))
         beta = torch.tensor(0.01)
 
-        model.train()
-        correct = 0
-        total_loss = 0
-        cross_loss_total = 0
-        fisherloss_total = 0
-        KL_loss_total = 0
-
-        for data_train, label_train in train_loader:
-            data_train, label_train = data_train.to(device), label_train.to(device)
-
-            # Add noise to data
-            noise = torch.randn_like(data_train) * 0.1
-            out_data = data_train + noise
-
-            # Forward pass
-            optimizer.zero_grad()
-            train_av, train_pred = model(data_train)
-            outdata_av, outdata_pred = model(data_train)
-
-            # Calculate centroids
-            centroid = cal_centroid(label_train.cpu(), train_av.cpu(), len(LABEL_MAPPING), last_centroids.cpu())
-            last_centroids.data = centroid.cpu()
-
-            # Calculate Fisher loss
-            Sw, Sb = fisher_loss(pred=train_av.cpu(), centroid=centroid)
-            threshold = cal_threshold(label=label_train.cpu(), pred=train_av.cpu(), centroid=centroid, rank_rate=rank_rate)
-            cross_loss = criterion(train_pred, label_train)
-            sw_lamda = (lambda_fischer.to(device)) * (Sw.to(device))
-            sb_alpha = ((lambda_fischer * alpha).to(device)) * (Sb.to(device))
-            fisherloss = sw_lamda - sb_alpha
-
-            # Calculate MMD loss
-            KL_loss_nobeta = mmd_rbf_noaccelerate(outdata_av, train_av)
-            KL_loss = (beta.to(device)) * KL_loss_nobeta
-
-            # Total loss
-            Loss = cross_loss + fisherloss - KL_loss
-
-            # Backward pass and optimization
-            Loss.backward()
-            optimizer.step()
-
-            # Calculate accuracy
-            pred = train_pred.max(1)[1]
-            correct += pred.eq(label_train.data.view_as(pred)).cpu().sum()
-
-            # Accumulate losses
-            total_loss += Loss.item()
-            cross_loss_total += cross_loss.item()
-            fisherloss_total += fisherloss.item()
-            KL_loss_total += KL_loss.item()
+        max_threshold = torch.zeros(len(LABEL_MAPPING))
+        max_threshold = train_sharedcnn(epoch, model, rank_rate=0.99, max_threshold=max_threshold, data=X_final, label=y, N_class=len(LABEL_MAPPING), lamda=lambda_fischer, alpha=alpha, beta=beta)
 
     return model
 
 
 
-
-def predict(X, Metadata, clf):
+def predict(X, Metadata, model):
     """
     Predicts anomaly scores for the input data using the trained CNN model.
 
@@ -443,28 +423,40 @@ def predict(X, Metadata, clf):
     Returns:
     - anomaly_scores: Anomaly scores for each sample in X. Higher scores indicate higher likelihood of being an outlier.
     """
-    clf.eval()  # Set model to evaluation mode
+    model.eval()
 
-    with torch.no_grad():  # Disable gradient computation
-        # Normalize input data using the same scaler from training
-        np_known_train_norm = min_max_scaler.transform(X)
+    # Normalize the data
+    min_max_scaler.fit(X)
+    X_norm = min_max_scaler.transform(X)
 
-        # Reshape input to match CNN input format (10x10 images)
-        X_padded = np.pad(np_known_train_norm, ((0, 0), (0, 16)), mode='constant', constant_values=0)
-        X_final = X_padded.reshape(X.shape[0], 1, 10, 10)  # Shape: (samples, channels, 10, 10)
+    # Reshape to match CNN input size (10x10)
+    X_padded = np.pad(X_norm, ((0, 0), (0, 16)), mode='constant', constant_values=0)
+    X_final = X_padded.reshape(X.shape[0], 1, 10, 10)  # Shape: (samples, channels, 10, 10)
 
-        # Convert to PyTorch tensor
-        X_tensor = torch.tensor(X_final, dtype=torch.float32)
+    loss = torch.nn.CrossEntropyLoss()
+    label = np.zeros(X.shape[0])
+    test_loader = get_source_loader(X_final, label, shuffle=False)
+    len_test_dataset = len(test_loader.dataset)
 
-        # Move to appropriate device (CPU or GPU)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        X_tensor = X_tensor.to(device)
+    last_centroids = torch.zeros(len(LABEL_MAPPING), len(LABEL_MAPPING))
 
-        # Forward pass through the model
-        logits, outputs = clf(X_tensor)
+    weights = list()
 
-        # Get predicted probabilities using softmax
-        predicted_probs = torch.nn.functional.softmax(logits, dim=1).cpu().numpy()
+    for data_test,label_test in test_loader:
+        with torch.no_grad():
+            data_test, label_test = Variable(data_test).float().to(device),Variable(label_test).type(torch.LongTensor).to(device)
+            test_av,test_pred, _, _ = model(data_test,data_test)
+
+            centroid = cal_centroid(label_test.cpu(), test_av.cpu(), len(LABEL_MAPPING), last_centroids)
+            last_centroids = centroid
+
+            centroids = torch.load('CICIDS_centroids20200601.pt')
+
+            pred = test_pred.max(1)[1]
+            dist_to_its_centriod, min_dist_class_index = cal_min_dis_to_centroid(pred=test_av.cpu(), centroid=centroids)
+
+            weights_this = test_pred[:,LABEL_MAPPING['Unknown']].cpu() + dist_to_its_centriod
+            weights.extend(weights_this.numpy().tolist())
 
     # Return the probability of the "Unknown" class as anomaly scores
-    return predicted_probs[:, LABEL_MAPPING['Unknown']]
+    return weights
