@@ -201,5 +201,13 @@ def calculation(y, lof_score, list_known):
     for idx in annotation_indices:
         output["annotated_points"].append([idx, f"{thresholds[idx]:.2f}, {true_samples[idx]}"])
 
+    # Get sorted indices (descending order)
+    sorted_indices = np.argsort(-uncertainties.copy())
+
+    # Sort y_Actual_Postitive accordingly
+    sorted_y_Actual_Postitive = y_Actual_Postitive[sorted_indices]
+
+    # Find the index of the first False value
+    output["indices_drawing"] = int(np.where(sorted_y_Actual_Postitive == False)[0][0] + 1)  # Add 1 for 1-based index
 
     return output
