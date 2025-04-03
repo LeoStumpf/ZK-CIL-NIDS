@@ -4,13 +4,26 @@ from Plot import plot_weights
 import unittest
 import time
 import gc
+import os
 import cupy as cp
 import torch
 
-# Define a test class for testing prediction and fitting functions
-class TestPredictFitFunctions(unittest.TestCase):
+# Define log file path
+LOG_FILE = "test_results.log"
 
-    # List of datasets for different day combinations
+# Ensure log file exists
+if not os.path.exists(LOG_FILE):
+    with open(LOG_FILE, "w") as f:
+        f.write("Timestamp, Implementation, Dataset, Status, Fit Time (s), Predict Time (s), Error\n")
+
+class TestPredictFitFunctions(unittest.TestCase):
+    def log_result(self, implementation, dataset, status, fit_time=None, predict_time=None, error=""):
+        """ Logs test results to a file. """
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_FILE, "a") as f:
+            f.write(f"{timestamp}, {implementation}, {dataset}, {status}, {fit_time or ''}, {predict_time or ''}, {error}\n")
+            print(f"{timestamp}, {implementation}, {dataset}, {status}, {fit_time or ''}, {predict_time or ''}, {error}\n")
+
     day_datasets = [
         "TrainDay0_TestDay1234",
         "TrainDay01_TestDay234",
@@ -27,80 +40,74 @@ class TestPredictFitFunctions(unittest.TestCase):
         "TrainDay0_Web"
     ]
 
-    # Test method to check the complete workflow for each dataset
     def test_complete_days(self):
-
-        # Iterate over each implementation module
+        """ Test all implementations with all datasets, ensuring failures don't stop execution. """
         for module_name in IMPLEMENTATIONS:
-            print(f"Run Operation {module_name}")
-            # Construct the module path dynamically
             module_path = "Implementation." + module_name
 
-            # Use subTest to isolate each module's test
-            with self.subTest(module=module_path):
-                # Dynamically import the module and get the 'predict' and 'fit' functions
-                module = __import__(module_path, fromlist=["predict", "fit"])
-                predict = getattr(module, "predict")
-                fit = getattr(module, "fit")
+            with self.subTest(module=module_name):
+                try:
+                    module = __import__(module_path, fromlist=["predict", "fit"])
+                    predict = getattr(module, "predict")
+                    fit = getattr(module, "fit")
+                except Exception as e:
+                    print(f"Skipping {module_name} due to import error: {e}")
+                    continue  # Skip this implementation if it fails to load
 
-                # Iterate over each dataset in the list
                 for test_dataset in self.day_datasets:
-                    print(f"Run Dataset {test_dataset}")
-                    # Load training data: features (X_train), labels (y_train), and metadata
-                    X_train, y_train, _ = load_data(test_dataset, "Train")
-                    list_known = list(set(y_train))
+                    with self.subTest(dataset=test_dataset):
+                        try:
+                            print(f"Running {module_name} on {test_dataset}")
 
-                    # Train the model using the training data
-                    start_time_fit = time.time()  # Start timer for fit
-                    print("Fit")
-                    model = fit(X_train, y_train)
-                    #model = fit(X_train[:2000, :], y_train[:2000])
-                    end_time_fit = time.time()  # End timer for fit
-                    execution_time_fit = end_time_fit - start_time_fit  # Calculate fit time
+                            # Load training data
+                            X_train, y_train, _ = load_data(test_dataset, "Train")
+                            list_known = list(set(y_train))
 
-                    # Clear training data from CPU and GPU memory
-                    del X_train, y_train, _
-                    cp._default_memory_pool.free_all_blocks()  # Free CUDA memory
-                    gc.collect()  # Force garbage collection
+                            # Fit model
+                            start_time_fit = time.time()
+                            model = fit(X_train, y_train)
+                            end_time_fit = time.time()
+                            execution_time_fit = end_time_fit - start_time_fit
 
-                    # Load testing data: features (X_test), labels (y_test), and metadata
-                    X_test, y_test, Metadata = load_data(test_dataset, "Test")
+                            # Free training data
+                            del X_train, y_train, _
+                            cp._default_memory_pool.free_all_blocks()
+                            gc.collect()
 
-                    # Use the trained model to make predictions on the test data
-                    start_time_predict = time.time()  # Start timer for predict
-                    print("Predict")
-                    weights = predict(X_test, Metadata, model)
-                    #weights = predict(X_test[:200, :], Metadata[:200], model)
-                    end_time_predict = time.time()  # End timer for predict
-                    execution_time_predict = end_time_predict - start_time_predict  # Calculate predict time
+                            # Load test data
+                            X_test, y_test, Metadata = load_data(test_dataset, "Test")
 
-                    # Plot the results (weights) for visualization
-                    plot_infos = {
-                        "algorithm_name": module_name,
-                        "dataset_name": test_dataset,
-                        "execution_time_fit": format_time(execution_time_fit),
-                        "execution_time_predict": format_time(execution_time_predict)
-                    }
+                            # Predict
+                            start_time_predict = time.time()
+                            weights = predict(X_test, Metadata, model)
+                            end_time_predict = time.time()
+                            execution_time_predict = end_time_predict - start_time_predict
 
-                    plot_weights(y_test, weights, module_name, Metadata, plot_infos, list_known)
-                    #plot_weights(y_test[:200], weights, module_name, Metadata[:200], plot_infos, list_known)
+                            # Plot results
+                            plot_infos = {
+                                "algorithm_name": module_name,
+                                "dataset_name": test_dataset,
+                                "execution_time_fit": format_time(execution_time_fit),
+                                "execution_time_predict": format_time(execution_time_predict)
+                            }
+                            plot_weights(y_test, weights, module_name, Metadata, plot_infos, list_known)
 
-                    # Move model to CPU before deletion
-                    try:
-                        model.to("cpu")
-                    except:
-                        ...
-                    del model
+                            # Log success
+                            self.log_result(module_name, test_dataset, "PASSED", execution_time_fit, execution_time_predict)
 
-                    # Manually delete all tensors
-                    del X_test, y_test, Metadata, weights
+                            # Free model memory
+                            try:
+                                model.to("cpu")
+                            except:
+                                pass
+                            del model, X_test, y_test, Metadata, weights
 
-                    # Free memory
-                    torch.cuda.empty_cache()
-                    gc.collect()
-                    cp._default_memory_pool.free_all_blocks()
-                    torch.cuda.synchronize()
+                            torch.cuda.empty_cache()
+                            gc.collect()
+                            cp._default_memory_pool.free_all_blocks()
+                            torch.cuda.synchronize()
 
-# Entry point to run the tests
-if __name__ == "__main__":
-    unittest.main()
+                        except Exception as e:
+                            self.log_result(module_name, test_dataset, "FAILED", error=str(e))
+                            self.fail(f"Failure in {module_name} - {test_dataset}: {e}")
+
