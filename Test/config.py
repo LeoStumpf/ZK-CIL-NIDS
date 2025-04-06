@@ -3,13 +3,13 @@ import numpy as np
 import os
 
 IMPLEMENTATIONS = [
+    #"OneClassForest",
     "IsolationForest",
-    "OneClassForest"
-    "NeuronalNetworkLoss"
-    "NeuronalNetwork"
-    "OneClassSVN"
-    "EnergyFlowClassifier"
-    "DistanceLOF"
+    "NeuronalNetworkLoss",
+    "NeuronalNetwork",
+    "OneClassSVN",
+    "EnergyFlowClassifier",
+    "DistanceLOF",
     "Random"
 ]
 

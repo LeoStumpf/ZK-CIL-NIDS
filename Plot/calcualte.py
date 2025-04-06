@@ -174,6 +174,8 @@ def calculation(y, lof_score, list_known):
     else:
         uncertainties_W = uncertainties
 
+    uncertainties_W += 1e-5 # add a small values to avoid 0
+
     # Normalize to [0, 1]
     weights = uncertainties_W / np.sum(uncertainties_W)
 

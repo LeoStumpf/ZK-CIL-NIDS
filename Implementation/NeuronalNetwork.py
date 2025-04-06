@@ -148,7 +148,7 @@ def fit(X, y, num_epochs=50, batch_size=32, learning_rate=0.001):
 
     # Initialize model with correct number of classes
     model = NN_Model(N_class=len(LABEL_MAPPING)).to(device)
-    criterion = nn.CrossEntropyLoss()  # Works with class indices, not one-hot
+    criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     # Training loop

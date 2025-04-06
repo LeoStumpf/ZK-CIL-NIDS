@@ -1,27 +1,75 @@
 import os
 import json
-import csv
+import pandas as pd
+
+THRESHOLDS = [0.90, 0.95, 0.99]
+
+# Define datasets and implementations of interest
+TARGET_DATASETS = ["TrainDay0_TestDay1234"]
+IMPLEMENTATIONS = [
+    "OneClassForest",
+    "IsolationForest",
+    "NeuronalNetworkLoss",
+    "NeuronalNetwork",
+    "OneClassSVN",
+    "EnergyFlowClassifier",
+    "DistanceLOF",
+    "Random"
+]
+
+BASE_DIR = "../04_pics"
+PARAMS = [
+    #Name
+    "algorithm_name",
+    "dataset_name",
+    "flow/samples",
+
+    #Execution Time
+    "execution_time_fit",
+    "execution_time_predict",
+
+    #Parametre
+    "AUPRIN",
+    "AUPROUT",
+    "AUROC",
+    "indices_drawing"
+    ]
+
+for threshold in THRESHOLDS:
+    PARAMS.append(f'first_above_{int(threshold * 100)}')
+
+# List of additional list fields you want to extract
+LIST_FIELDS = [
+    "precision_scores",
+    "precision_AUPROUT_scores",
+    # Add more list-based fields here if needed
+]
+
+OUTPUT_FILE = "output.csv"
+LATEX_FILE = "output_tables.tex"
+
+def sanitize_latex(value):
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value).replace("_", "\\_") if value is not None else "---"
+
+def generate_index_drawing(df_all):
+    # Initialize new columns
+    for threshold in THRESHOLDS:
+        df_all[f'first_above_{int(threshold * 100)}'] = None
+
+    # Fill in the index values
+    for idx, row in df_all.iterrows():
+        probabilities = row["probabilitie_drawing"]
+        list_length = len(probabilities)
+
+        for threshold in THRESHOLDS:
+            index = next((i + 1 for i, v in enumerate(probabilities) if v > threshold), list_length + 1)
+            df_all.at[idx, f'first_above_{int(threshold * 100)}'] = index
+
+    return df_all
 
 if __name__ == "__main__":
-    # Define the directory and parameters to extract
-    BASE_DIR = "../04_pics"
-    PARAMS = [
-        #Name
-        "algorithm_name",
-        "dataset_name",
-        "flow/samples",
-
-        #Execution Time
-        "execution_time_fit",
-        "execution_time_predict",
-
-        #Parametre
-        "AUPRIN",
-        "AUPROUT",
-        "AUROC",
-        ]
-    THRESHOLDS = [0.90, 0.95, 0.99]
-    OUTPUT_FILE = "output.csv"
 
     # Find all JSON files recursively
     json_files = []
@@ -32,33 +80,76 @@ if __name__ == "__main__":
 
     # Process each JSON file and extract the parameters
     data = []
+    df_dicts = []
     for json_file in json_files:
         try:
             with open(json_file, "r", encoding="utf-8") as f:
                 content = json.load(f)
 
+            all_fields = list(content.keys())
+
             # Extract only the last two parts of the file path
             short_filename = "_".join(json_file.split(os.sep)[-2:])  # Get last two parts
 
-            # Extract parameters (default to None if missing)
-            row = [short_filename] + [content.get(param, None) for param in PARAMS]
-            data.append(row)
+            entry = {"filename": short_filename}
+            for key in all_fields:
+                entry[key] = content.get(key, None)
 
-            # Extract probability list and compute threshold indices
-            probabilities = content.get("probabilitie_drawing", [])
-            list_length = len(probabilities)
-
-            for threshold in THRESHOLDS:
-                index = next((i + 1 for i, v in enumerate(probabilities) if v > threshold), list_length + 1)
-                row.append(index)
+            df_dicts.append(entry)
         except Exception as e:
             print(f"Error reading {json_file}: {e}")
 
+    # Convert to DataFrame
+    df_all = pd.DataFrame(df_dicts)
+
+    # Generate DF drawn index
+    df_all = generate_index_drawing(df_all)
+
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        header = ["filename"] + PARAMS + [f"first_above_{t}" for t in THRESHOLDS]
-        writer.writerow(header)  # Write header
-        writer.writerows(data)  # Write data rows
-
+        df_all.to_csv(f, columns=PARAMS, index=False, encoding="utf-8")
     print(f"CSV file saved: {OUTPUT_FILE}")
+
+    # ------------------ LaTeX TABLE OUTPUT ------------------ #
+
+    # Create LaTeX tables
+    with open(LATEX_FILE, "w", encoding="utf-8") as f:
+        f.write("\\documentclass{article}\n\\usepackage{booktabs}\n\\begin{document}\n")
+
+        for dataset in TARGET_DATASETS:
+            f.write(f"\\section*{{Results for dataset: {dataset}}}\n")
+
+            # Create LaTeX table
+            f.write("\\begin{table}[h!]\n\\centering\n")
+            f.write("\\caption{Results for dataset \\texttt{%s}}\n" % dataset)
+            f.write("\\label{tab:%s}\n" % dataset.lower().replace("_", ""))
+            f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
+            f.write("\\toprule\n")
+            f.write("Algorithm & Fit Time & Predict Time & AUPR-IN & AUPR-OUT & AUROC & Indices Draw & >0.9 & >0.95 & >0.99 \\\\\n")
+            f.write("\\midrule\n")
+
+            for impl in IMPLEMENTATIONS:
+                row = next((r for r in data if r[2] == dataset and r[1] == impl and r[3] == "samples"), None)
+                if row:
+                    line = " & ".join([
+                        sanitize_latex(row[1]),   # algorithm_name
+                        sanitize_latex(row[4]),   # execution_time_fit
+                        sanitize_latex(row[5]),   # execution_time_predict
+                        sanitize_latex(row[6]),   # AUPRIN
+                        sanitize_latex(row[7]),   # AUPROUT
+                        sanitize_latex(row[8]),   # AUROC
+                        sanitize_latex(row[9]),   # indices_drawing
+                        sanitize_latex(row[10]),  # first_above_0.9
+                        sanitize_latex(row[11]),  # first_above_0.95
+                        sanitize_latex(row[12])   # first_above_0.99
+                    ]) + " \\\\\n"
+                    f.write(line)
+                else:
+                    f.write(f"{impl} & --- & --- & --- & --- & --- & --- & --- & --- & --- \\\\\n")
+
+            f.write("\\bottomrule\n")
+            f.write("\\end{tabular}\n\\end{table}\n\n")
+
+        f.write("\\end{document}\n")
+
+    print(f"LaTeX tables saved: {LATEX_FILE}")
