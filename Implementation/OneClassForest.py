@@ -50,8 +50,8 @@ def fit(X, y):
             bootstrap_sample = X_label[bootstrap_idx]
 
             # Generate outliers only for this tree
-            #outliers = _generate_histogram_based(N_outlier, bootstrap_sample, bins=bins)
-            outliers = generate_outliers(X_label, target_outliers=N_outlier)
+            outliers = _generate_histogram_based(N_outlier, bootstrap_sample, bins=bins)
+            #outliers = generate_outliers(X_label, target_outliers=N_outlier)
 
             # Create labels
             labels = cp.hstack((cp.zeros(bootstrap_sample.shape[0]), cp.ones(outliers.shape[0])))
