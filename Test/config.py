@@ -3,15 +3,16 @@ import numpy as np
 import os
 
 IMPLEMENTATIONS = [
-    "OneClassForestwoBootstrap",
-    "OneClassForest",
+    #"OneClassForestwoBootstrap",
+    #"OneClassForest",
     #"IsolationForest",
     #"NeuronalNetworkLoss",
     #"NeuronalNetwork",
     #"OneClassSVN",
     #"EnergyFlowClassifier",
     #"DistanceLOF",
-    #"Random"
+    #"Random",
+    "LocalOutlierFactor"
 ]
 
 base_path = "/home/leo/ZK-CIL-NIDS/dataset"

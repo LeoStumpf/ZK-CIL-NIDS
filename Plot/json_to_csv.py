@@ -8,12 +8,14 @@ THRESHOLDS = [0.90, 0.95, 0.99]
 TARGET_DATASETS = ["TrainDay0_TestDay1234"]
 IMPLEMENTATIONS = [
     "OneClassForest",
+    "OneClassForestwoBootstrap",
     "IsolationForest",
     "NeuronalNetworkLoss",
     "NeuronalNetwork",
     "OneClassSVN",
     "EnergyFlowClassifier",
     "DistanceLOF",
+    "LocalOutlierFactor",
     "Random"
 ]
 
