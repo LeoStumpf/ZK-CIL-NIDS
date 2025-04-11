@@ -1,6 +1,9 @@
 import os
 import json
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import plots_arregates
 
 THRESHOLDS = [0.90, 0.95, 0.99]
 
@@ -18,6 +21,11 @@ IMPLEMENTATIONS = [
     "LocalOutlierFactor",
     "Random"
 ]
+
+
+# Map each algorithm to a fixed color
+tab_colors = plt.cm.tab10.colors
+algorithm_colors = {name: tab_colors[i % 10] for i, name in enumerate(IMPLEMENTATIONS)}
 
 BASE_DIR = "../04_pics"
 PARAMS = [
@@ -71,6 +79,58 @@ def generate_index_drawing(df_all):
 
     return df_all
 
+
+def generate_plots(df_all):
+    # Ensure the main plot folder exists
+    base_plot_dir = "../04_pics/aggregated"
+    os.makedirs(base_plot_dir, exist_ok=True)
+
+    # Group by "flow/samples" and then by "dataset_name"
+    for flow_sample_type, df_flow_group in df_all.groupby("flow/samples"):
+        subfolder_path = os.path.join(base_plot_dir, flow_sample_type)
+        os.makedirs(subfolder_path, exist_ok=True)
+
+        for dataset_name, df_dataset_group in df_flow_group.groupby("dataset_name"):
+            #Plot_AUPRIN, Plot_TprFpr, Plot_AUPROUT, Plot_TruePositivesRate, Plot_DrawingProbability
+            DPI = 300
+            fig_AUPRIN, ax_AUPRIN = plt.subplots(figsize=(8, 8), dpi=DPI)
+            fig_TprFpr, ax_TprFpr = plt.subplots(figsize=(8, 8), dpi=DPI)
+            fig_AUPROUT, ax_AUPROUT = plt.subplots(figsize=(8, 8), dpi=DPI)
+            fig_TruePositivesRate, ax_TruePositivesRate = plt.subplots(figsize=(10, 5), dpi=DPI)
+            fig_DrawingProbability, ax_DrawingProbability = plt.subplots(figsize=(10, 5), dpi=DPI)
+
+            df_dataset_group = df_dataset_group.sort_values(by="algorithm_name")
+            for _, row in df_dataset_group.iterrows():
+                algorithm = row["algorithm_name"]
+                fpr_scores = row["fpr_scores"]
+                tpr_scores = row["tpr_scores"]
+                ax_TprFpr.plot(fpr_scores, tpr_scores, label=algorithm, marker='o', linestyle='-', color=algorithm_colors[algorithm])
+
+                precision_scores = row["precision_scores"]
+                recall_scores = row["recall_scores"]
+                ax_AUPRIN.plot(recall_scores, precision_scores, label=algorithm, marker='o', linestyle='-', color=algorithm_colors[algorithm])
+
+                precision_AUPROUT_scores = row["precision_AUPROUT_scores"]
+                recall_AUPROUT_scores = row["recall_AUPROUT_scores"]
+                ax_AUPROUT.plot(recall_AUPROUT_scores, precision_AUPROUT_scores, label=algorithm, marker='o', linestyle='-', color=algorithm_colors[algorithm])
+
+                pos_rates = row["pos_rates"]
+                indices = np.arange(len(pos_rates))
+                ax_TruePositivesRate.plot(indices, pos_rates, label=algorithm, marker='o', linestyle='-', color=algorithm_colors[algorithm])
+
+                probabilitie_drawing = row["probabilitie_drawing"]
+                indices = np.arange(len(probabilitie_drawing))
+                ax_DrawingProbability.plot(indices, probabilitie_drawing, label=algorithm, marker='o', linestyle='-', color=algorithm_colors[algorithm])
+
+            plot_infos = {'dataset_name': dataset_name, 'flow/samples':flow_sample_type, 'save_path': subfolder_path, 'DPI': DPI}
+            plots_arregates.format_plot_TprFpr(fig_TprFpr, ax_TprFpr, plot_infos)
+            plots_arregates.format_plot_AUPRIN(fig_AUPRIN, ax_AUPRIN, plot_infos)
+            plots_arregates.format_plot_AUPROUT(fig_AUPROUT, ax_AUPROUT, plot_infos)
+            plots_arregates.format_plot_TruePositivesRate(fig_TruePositivesRate, ax_TruePositivesRate, plot_infos)
+            plots_arregates.format_plot_DrawingProbability(fig_DrawingProbability, ax_DrawingProbability, plot_infos)
+
+
+
 if __name__ == "__main__":
 
     # Find all JSON files recursively
@@ -106,6 +166,8 @@ if __name__ == "__main__":
 
     # Generate DF drawn index
     df_all = generate_index_drawing(df_all)
+
+    generate_plots(df_all)
 
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
