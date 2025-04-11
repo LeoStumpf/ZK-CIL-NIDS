@@ -3,15 +3,15 @@ import numpy as np
 import os
 
 IMPLEMENTATIONS = [
-    #"OneClassForestwoBootstrap",
-    #"OneClassForest",
-    #"IsolationForest",
-    #"NeuronalNetworkLoss",
-    #"NeuronalNetwork",
-    #"OneClassSVN",
-    #"EnergyFlowClassifier",
-    #"DistanceLOF",
-    #"Random",
+    "Random",
+    "OneClassForestwoBootstrap",
+    "OneClassForest",
+    "IsolationForest",
+    "NeuronalNetworkLoss",
+    "NeuronalNetwork",
+    "OneClassSVN",
+    "EnergyFlowClassifier",
+    "DistanceLOF",
     "LocalOutlierFactor"
 ]
 

@@ -103,8 +103,8 @@ def calculation(y, lof_score, list_known):
     # all the known classes are considered as the positive class
     # and the unknown class is considered as the negative class
     # except for AUPROUT
-    y_Actual_Postitive = np.isin(y, list_known)
-    y_Actual_Postitive_AUPROUT = ~y_Actual_Postitive
+    y_Actual_Postitive = np.isin(y, list_known)  # Mark known classes as actual positives (for ROC and AUPRIN)
+    y_Actual_Postitive_AUPROUT = ~y_Actual_Postitive  # Mark unknown classes as actual positives (for AUPROUT)
 
     # Initialize Scores
     precision_scores = []
@@ -119,26 +119,27 @@ def calculation(y, lof_score, list_known):
     output = dict()
 
     for threshold in thresholds:
-        y_Predicted_Positive = (uncertainties >= threshold)
+        y_Predicted_Positive = (uncertainties < threshold)  # Predict sample as known (positive) if uncertainty is low
+        y_Predicted_Positive_AUPROUT = (uncertainties >= threshold)  # Predict sample as unknown (positive for AUPROUT) if uncertainty is high
         num_positive = np.sum(y_Predicted_Positive)
 
         # Compute TP, FP, FN based on conditions
-        tp = np.sum( y_Actual_Postitive &  y_Predicted_Positive)
-        tn = np.sum(~y_Actual_Postitive & ~y_Predicted_Positive)
-        fp = np.sum(~y_Actual_Postitive &  y_Predicted_Positive)
-        fn = np.sum( y_Actual_Postitive & ~y_Predicted_Positive)
+        tp = np.sum( y_Actual_Postitive &  y_Predicted_Positive) # True Positives: Known correctly predicted as known
+        tn = np.sum(~y_Actual_Postitive & ~y_Predicted_Positive) # True Negatives: Unknown correctly predicted as unknown
+        fp = np.sum(~y_Actual_Postitive &  y_Predicted_Positive) # False Positives: Unknown incorrectly predicted as known
+        fn = np.sum( y_Actual_Postitive & ~y_Predicted_Positive) # False Negatives: Known incorrectly predicted as unknown
 
         # Calculate scores
         precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         tpr = tp / (tp + fn) if (tp + fn) > 0 else 0.0  # True Positive Rate (Recall)
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0  # False Positive Rate
-        pos_rate = tp / num_positive
+        pos_rate = tp / num_positive if num_positive > 0 else 0.0
 
-        # compute AUPROUT scores
-        tp_AUPROUT = np.sum(y_Actual_Postitive_AUPROUT & y_Predicted_Positive)
-        fp_AUPROUT = np.sum(~y_Actual_Postitive_AUPROUT & y_Predicted_Positive)
-        fn_AUPROUT = np.sum(y_Actual_Postitive_AUPROUT & ~y_Predicted_Positive)
+        # Compute AUPROUT scores (unknowns as positives)
+        tp_AUPROUT = np.sum(y_Actual_Postitive_AUPROUT & y_Predicted_Positive_AUPROUT)  # Unknown correctly predicted as unknown
+        fp_AUPROUT = np.sum(~y_Actual_Postitive_AUPROUT & y_Predicted_Positive_AUPROUT)  # Known incorrectly predicted as unknown
+        fn_AUPROUT = np.sum(y_Actual_Postitive_AUPROUT & ~y_Predicted_Positive_AUPROUT)  # Unknown incorrectly predicted as known
         precision_AUPROUT = tp_AUPROUT / (tp_AUPROUT + fp_AUPROUT) if (tp_AUPROUT + fp_AUPROUT) > 0 else 1.0
         recall_AUPROUT = tp_AUPROUT / (tp_AUPROUT + fn_AUPROUT) if (tp_AUPROUT + fn_AUPROUT) > 0 else 0.0
 
@@ -212,4 +213,7 @@ def calculation(y, lof_score, list_known):
     # Find the index of the first False value
     output["indices_drawing"] = int(np.where(sorted_y_Actual_Postitive == False)[0][0] + 1)  # Add 1 for 1-based index
 
+    #store value range
+    output["min_max"] = [min(lof_score), max(lof_score)]
+    output["thresholds"] = thresholds
     return output
