@@ -181,7 +181,7 @@ def calculation(y, lof_score, list_known):
     weights = uncertainties_W / np.sum(uncertainties_W)
 
     # Probability of drawing a negative sample
-    negative_indices = ~y_Actual_Postitive
+    negative_indices = ~y_Actual_Postitive # Mark unknown classes as true
     P_negative = np.sum(weights[negative_indices])
 
     # Calculate probabilities for 1 to max_samples draws

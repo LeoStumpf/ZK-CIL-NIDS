@@ -129,8 +129,6 @@ def generate_plots(df_all):
             plots_arregates.format_plot_TruePositivesRate(fig_TruePositivesRate, ax_TruePositivesRate, plot_infos)
             plots_arregates.format_plot_DrawingProbability(fig_DrawingProbability, ax_DrawingProbability, plot_infos)
 
-
-
 if __name__ == "__main__":
 
     # Find all JSON files recursively
@@ -141,7 +139,6 @@ if __name__ == "__main__":
                 json_files.append(os.path.join(root, file))
 
     # Process each JSON file and extract the parameters
-    data = []
     df_dicts = []
     for json_file in json_files:
         try:
@@ -180,40 +177,53 @@ if __name__ == "__main__":
     with open(LATEX_FILE, "w", encoding="utf-8") as f:
         f.write("\\documentclass{article}\n\\usepackage{booktabs}\n\\begin{document}\n")
 
-        for dataset in TARGET_DATASETS:
-            f.write(f"\\section*{{Results for dataset: {dataset}}}\n")
+        for flow_samples, group_fs in df_all.groupby('flow/samples'):
+            print(f"Processing flow samples:{flow_samples}")
 
-            # Create LaTeX table
-            f.write("\\begin{table}[h!]\n\\centering\n")
-            f.write("\\caption{Results for dataset \\texttt{%s}}\n" % dataset)
-            f.write("\\label{tab:%s}\n" % dataset.lower().replace("_", ""))
-            f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
-            f.write("\\toprule\n")
-            f.write("Algorithm & Fit Time & Predict Time & AUPR-IN & AUPR-OUT & AUROC & Indices Draw & >0.9 & >0.95 & >0.99 \\\\\n")
-            f.write("\\midrule\n")
+            for dataset, group_ds in group_fs.groupby("dataset_name"):
+                print(f"Processing dataset_name:{dataset}")
 
-            for impl in IMPLEMENTATIONS:
-                row = next((r for r in data if r[2] == dataset and r[1] == impl and r[3] == "samples"), None)
-                if row:
+                f.write(f"\\section*{{Results for dataset: {dataset}, {flow_samples}}}\n")
+
+                # Create LaTeX table
+                f.write("\\begin{table}[h!]\n\\centering\n")
+                f.write(f"\\caption{{Results for dataset \\texttt{{{dataset}}}, flow samples: {flow_samples}}}\n")
+                f.write(f"\\label{{tab:{dataset.lower().replace('_', '')}_{flow_samples}}}\n")
+                f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
+                f.write("\\toprule\n")
+                f.write("Algorithm & Fit Time & Predict Time & AUPRIN & AUPROUT & AUROC & Indices Draw & >0.9 & >0.95 & >0.99 \\\\\n")
+                f.write("\\midrule\n")
+
+                for impl in IMPLEMENTATIONS:
+                    # Filter the DataFrame
+                    filtered = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples) & (df_all['algorithm_name'] == impl)]
+
+                    if not filtered.empty:
+                        # Get the first row as a dict
+                        row = filtered.iloc[0].to_dict()
+                    else:
+                        # Return dict with all column names and "--" as values
+                        row = {col: '-' for col in df_all.columns}
+                        row["algorithm_name"] = impl
+
                     line = " & ".join([
-                        sanitize_latex(row[1]),   # algorithm_name
-                        sanitize_latex(row[4]),   # execution_time_fit
-                        sanitize_latex(row[5]),   # execution_time_predict
-                        sanitize_latex(row[6]),   # AUPRIN
-                        sanitize_latex(row[7]),   # AUPROUT
-                        sanitize_latex(row[8]),   # AUROC
-                        sanitize_latex(row[9]),   # indices_drawing
-                        sanitize_latex(row[10]),  # first_above_0.9
-                        sanitize_latex(row[11]),  # first_above_0.95
-                        sanitize_latex(row[12])   # first_above_0.99
+                        sanitize_latex(row["algorithm_name"]),
+                        sanitize_latex(row["execution_time_fit"]),
+                        sanitize_latex(row["execution_time_predict"]),
+                        sanitize_latex(row["AUPRIN"]),
+                        sanitize_latex(row["AUPROUT"]),
+                        sanitize_latex(row["AUROC"]),
+                        sanitize_latex(row["indices_drawing"]),
+                        sanitize_latex(row["first_above_90"]),
+                        sanitize_latex(row["first_above_95"]),
+                        sanitize_latex(row["first_above_99"])
                     ]) + " \\\\\n"
                     f.write(line)
-                else:
-                    f.write(f"{impl} & --- & --- & --- & --- & --- & --- & --- & --- & --- \\\\\n")
-
-            f.write("\\bottomrule\n")
-            f.write("\\end{tabular}\n\\end{table}\n\n")
+                f.write("\\bottomrule\n")
+                f.write("\\end{tabular}\n\\end{table}\n\n")
 
         f.write("\\end{document}\n")
 
-    print(f"LaTeX tables saved: {LATEX_FILE}")
+        print(f"LaTeX tables saved: {LATEX_FILE}")
+
+
