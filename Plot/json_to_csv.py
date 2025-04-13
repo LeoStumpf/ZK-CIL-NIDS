@@ -22,6 +22,19 @@ IMPLEMENTATIONS = [
     "Random"
 ]
 
+Attack_datasets = {
+    'TrainDay0_DDos': 'DDOS',
+    'TrainDay0_Dos': 'DOS',
+    'TrainDay0_FTPPatator': 'FTPPatator',
+    'TrainDay0_Heartbleed': 'Heartbleed',
+    'TrainDay0_Infiltration': 'Infiltration',
+    'TrainDay0_PortScan': 'PortScan',
+    'TrainDay0_SSHPatator': 'SSHPatator',
+    'TrainDay0_TestBotnet': 'Botnet',
+    'TrainDay0_Web': 'Web'
+}
+
+
 
 # Map each algorithm to a fixed color
 tab_colors = plt.cm.tab10.colors
@@ -78,6 +91,76 @@ def generate_index_drawing(df_all):
             df_all.at[idx, f'first_above_{int(threshold * 100)}'] = index
 
     return df_all
+
+def generate_plots_specific2(df_input):
+    base_plot_dir = "../04_pics/aggregated/special"
+    os.makedirs(base_plot_dir, exist_ok=True)
+
+    def prepare_and_plot(ax, df, title):
+        df = df[df['dataset_name'].isin(Attack_datasets.keys())]
+        df.loc[:, 'dataset_name'] = df['dataset_name'].map(Attack_datasets)
+
+        # Prepare complete grid
+        all_datasets = sorted(df['dataset_name'].unique())
+        all_algorithms = sorted(df['algorithm_name'].unique())
+        full_index = pd.MultiIndex.from_product([all_datasets, all_algorithms], names=['dataset_name', 'algorithm_name'])
+        df_full = df.set_index(['dataset_name', 'algorithm_name']).reindex(full_index).reset_index()
+
+        df_full['first_above_99_for_plot'] = df_full['first_above_99'].fillna(0).astype(float)
+        df_full['is_missing'] = df_full['first_above_99'].isna()
+
+        # Plot settings
+        num_algos = len(all_algorithms)
+        num_datasets = len(all_datasets)
+        bar_width = 0.8 / num_algos
+        x = np.arange(num_datasets)
+
+        for i, algo in enumerate(all_algorithms):
+            subset = df_full[df_full['algorithm_name'] == algo]
+            offsets = x - 0.4 + i * bar_width + bar_width / 2
+            heights = subset['first_above_99_for_plot']
+
+            ax.bar(offsets, heights, width=bar_width, label=algo, color=algorithm_colors[algo])
+
+            for j, (value, missing) in enumerate(zip(subset['first_above_99'], subset['is_missing'])):
+                label = 'NA' if missing else int(value)
+                if not missing and value > 200:
+                    label = ">"
+                y = subset.iloc[j]['first_above_99_for_plot']
+                ax.text(offsets[j], y + 0.3, str(label), ha='center', va='bottom', fontsize=7)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(all_datasets, rotation=0, fontsize=12)
+        ax.set_ylim(0, 210)
+        ax.set_ylabel(f'Number {title} for Probability >99%', fontsize=14)
+        ax.set_title(f'Number {title} for Probability >99%', fontsize=14)
+
+    # Create subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(25, 10), dpi=100, sharex=True)
+
+    df_samples = df_input.copy()
+    df_samples = df_samples[df_samples['flow/samples'] == "samples"]
+    prepare_and_plot(ax1, df_samples, title="Samples")
+
+    df_flows = df_input.copy()
+    df_flows = df_flows[df_flows['flow/samples'] == "flows"]
+    prepare_and_plot(ax2, df_flows, title="Flows")
+
+    # Custom legend below both plots
+    handles, labels = ax1.get_legend_handles_labels()
+    fig.legend(handles, labels,
+               loc='lower center',
+               ncol=5,
+               frameon=False,
+               fontsize=12)
+
+    # Adjust layout
+    fig.tight_layout()
+    fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1)
+    plt.savefig(os.path.join(base_plot_dir, "Plot_samples_vs_flows_attack_drawf.png"),
+                format='png', dpi=100, bbox_inches='tight', facecolor='white')
+    plt.close()
+
 
 def generate_plots_specific(df_all):
     DPI = 100
@@ -307,7 +390,8 @@ if __name__ == "__main__":
     df_all = generate_index_drawing(df_all)
 
     #generate_plots(df_all)
-    generate_plots_specific(df_all)
+    #generate_plots_specific(df_all)
+    generate_plots_specific2(df_all)
 
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
