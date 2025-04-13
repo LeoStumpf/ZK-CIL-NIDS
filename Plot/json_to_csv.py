@@ -129,6 +129,33 @@ def generate_plots(df_all):
             plots_arregates.format_plot_TruePositivesRate(fig_TruePositivesRate, ax_TruePositivesRate, plot_infos)
             plots_arregates.format_plot_DrawingProbability(fig_DrawingProbability, ax_DrawingProbability, plot_infos)
 
+
+def print_table_lines(df_all, dataset, flow_samples, impl):
+    # Filter the DataFrame
+    filtered = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples) & (df_all['algorithm_name'] == impl)]
+
+    if not filtered.empty:
+        # Get the first row as a dict
+        row = filtered.iloc[0].to_dict()
+    else:
+        # Return dict with all column names and "--" as values
+        row = {col: '-' for col in df_all.columns}
+        row["algorithm_name"] = impl
+
+    line = " & ".join([
+        sanitize_latex(row["algorithm_name"]),
+        sanitize_latex(row["execution_time_fit"]),
+        sanitize_latex(row["execution_time_predict"]),
+        sanitize_latex(row["AUPRIN"]),
+        sanitize_latex(row["AUPROUT"]),
+        sanitize_latex(row["AUROC"]),
+        sanitize_latex(row["indices_drawing"]),
+        sanitize_latex(row["first_above_90"]),
+        sanitize_latex(row["first_above_95"]),
+        sanitize_latex(row["first_above_99"])
+    ]) + " \\\\\n"
+    f.write(line)
+
 if __name__ == "__main__":
 
     # Find all JSON files recursively
@@ -164,7 +191,7 @@ if __name__ == "__main__":
     # Generate DF drawn index
     df_all = generate_index_drawing(df_all)
 
-    generate_plots(df_all)
+    #generate_plots(df_all)
 
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
@@ -178,49 +205,41 @@ if __name__ == "__main__":
         f.write("\\documentclass{article}\n\\usepackage{booktabs}\n\\begin{document}\n")
 
         for flow_samples, group_fs in df_all.groupby('flow/samples'):
-            print(f"Processing flow samples:{flow_samples}")
+            #print(f"Processing flow samples:{flow_samples}")
 
             for dataset, group_ds in group_fs.groupby("dataset_name"):
-                print(f"Processing dataset_name:{dataset}")
+                #print(f"Processing dataset_name:{dataset}")
 
                 f.write(f"\\section*{{Results for dataset: {dataset}, {flow_samples}}}\n")
 
                 # Create LaTeX table
                 f.write("\\begin{table}[h!]\n\\centering\n")
-                f.write(f"\\caption{{Results for dataset \\texttt{{{dataset}}}, flow samples: {flow_samples}}}\n")
-                f.write(f"\\label{{tab:{dataset.lower().replace('_', '')}_{flow_samples}}}\n")
+                f.write(f"\\caption{{Results for dataset {dataset}, flow samples: {flow_samples}}}\n")
                 f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
                 f.write("\\toprule\n")
-                f.write("Algorithm & Fit Time & Predict Time & AUPRIN & AUPROUT & AUROC & Indices Draw & >0.9 & >0.95 & >0.99 \\\\\n")
+                f.write("Algorithm & Fit Time & Predict Time & AUPRIN & AUPROUT & AUROC & i\_drawn & $\geq 0.9\%$ & $\geq 0.95\%$ & $\geq 0.99\%$ \\\\\n")
                 f.write("\\midrule\n")
 
                 for impl in IMPLEMENTATIONS:
-                    # Filter the DataFrame
-                    filtered = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples) & (df_all['algorithm_name'] == impl)]
+                    print_table_lines(df_all, dataset, flow_samples, impl)
 
-                    if not filtered.empty:
-                        # Get the first row as a dict
-                        row = filtered.iloc[0].to_dict()
-                    else:
-                        # Return dict with all column names and "--" as values
-                        row = {col: '-' for col in df_all.columns}
-                        row["algorithm_name"] = impl
-
-                    line = " & ".join([
-                        sanitize_latex(row["algorithm_name"]),
-                        sanitize_latex(row["execution_time_fit"]),
-                        sanitize_latex(row["execution_time_predict"]),
-                        sanitize_latex(row["AUPRIN"]),
-                        sanitize_latex(row["AUPROUT"]),
-                        sanitize_latex(row["AUROC"]),
-                        sanitize_latex(row["indices_drawing"]),
-                        sanitize_latex(row["first_above_90"]),
-                        sanitize_latex(row["first_above_95"]),
-                        sanitize_latex(row["first_above_99"])
-                    ]) + " \\\\\n"
-                    f.write(line)
                 f.write("\\bottomrule\n")
                 f.write("\\end{tabular}\n\\end{table}\n\n")
+
+
+        #write specific tabe Sample score results for day datasets
+        f.write("\\begin{table*}[t]\n\\centering\n")
+        f.write(f"\\caption{{Sample score results for day datasets}}\n")
+        f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
+        f.write("\\toprule\n")
+        for dataset in ["TrainDay0_TestDay1234", "TrainDay01_TestDay234", "TrainDay012_TestDay34", "TrainDay0123_TestDay4"]:
+            f.write(f"{sanitize_latex(dataset)} & Fit Time & Predict Time & AUPRIN & AUPROUT & AUROC & i\_drawn & $\geq 0.9\%$ & $\geq 0.95\%$ & $\geq 0.99\%$ \\\\\n")
+            f.write("\\midrule\n")
+            for impl in IMPLEMENTATIONS:
+                print_table_lines(df_all, dataset, "samples", impl)
+            f.write("\\midrule\n")
+        f.write("\\bottomrule\n")
+        f.write("\\end{tabular}\n\\end{table*}\n\n")
 
         f.write("\\end{document}\n")
 
