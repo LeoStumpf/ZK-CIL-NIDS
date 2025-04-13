@@ -79,6 +79,121 @@ def generate_index_drawing(df_all):
 
     return df_all
 
+def generate_plots_specific(df_all):
+    DPI = 100
+    # Ensure the main plot folder exists
+    base_plot_dir = "../04_pics/aggregated/special"
+    os.makedirs(base_plot_dir, exist_ok=True)
+
+    fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(20, 16))
+
+    general_settig = {'flow/samples': 'samples', 'DPI': DPI}
+    plots = [
+        {'dataset_name': 'TrainDay0_TestDay1234', 'ax': axes[0, 0], "metric": "AUROC"},
+        {'dataset_name': 'TrainDay01_TestDay234', 'ax': axes[0, 1], "metric": "AUROC"},
+        {'dataset_name': 'TrainDay012_TestDay34', 'ax': axes[0, 2], "metric": "AUROC"},
+        {'dataset_name': 'TrainDay0123_TestDay4', 'ax': axes[0, 3], "metric": "AUROC"},
+
+        {'dataset_name': 'TrainDay0_TestDay1234', 'ax': axes[1, 0], "metric": "AUPRIN"},
+        {'dataset_name': 'TrainDay01_TestDay234', 'ax': axes[1, 1], "metric": "AUPRIN"},
+        {'dataset_name': 'TrainDay012_TestDay34', 'ax': axes[1, 2], "metric": "AUPRIN"},
+        {'dataset_name': 'TrainDay0123_TestDay4', 'ax': axes[1, 3], "metric": "AUPRIN"},
+
+        {'dataset_name': 'TrainDay0_TestDay1234', 'ax': axes[2, 0], "metric": "AUPROUT"},
+        {'dataset_name': 'TrainDay01_TestDay234', 'ax': axes[2, 1], "metric": "AUPROUT"},
+        {'dataset_name': 'TrainDay012_TestDay34', 'ax': axes[2, 2], "metric": "AUPROUT"},
+        {'dataset_name': 'TrainDay0123_TestDay4', 'ax': axes[2, 3], "metric": "AUPROUT"}
+    ]
+
+    fig.set_facecolor('white')
+    for plot in plots:
+        plot_infos = general_settig | plot
+        ax = plot["ax"]
+        ax.set_facecolor('white')
+
+        filtered = df_all[(df_all['dataset_name'] == plot["dataset_name"]) & (df_all['flow/samples'] == general_settig["flow/samples"])]
+        filtered = filtered.sort_values(by="algorithm_name")
+        for _, row in filtered.iterrows():
+            algorithm = row["algorithm_name"]
+            if plot["metric"] == "AUROC":
+                fpr_scores = row["fpr_scores"]
+                tpr_scores = row["tpr_scores"]
+                ax.plot(fpr_scores, tpr_scores,
+                label=algorithm,
+                marker='o',
+                linestyle='-',
+                color=algorithm_colors[algorithm],
+                markersize=3)
+
+            if plot["metric"] == "AUPRIN":
+                precision_scores = row["precision_scores"]
+                recall_scores = row["recall_scores"]
+                ax.plot(recall_scores, precision_scores,
+                label=algorithm,
+                marker='o',
+                linestyle='-',
+                color=algorithm_colors[algorithm],
+                markersize=3)
+
+            if plot["metric"] == "AUPROUT":
+                precision_AUPROUT_scores = row["precision_AUPROUT_scores"]
+                recall_AUPROUT_scores = row["recall_AUPROUT_scores"]
+                ax.plot(recall_AUPROUT_scores, precision_AUPROUT_scores,
+                label=algorithm,
+                marker='o',
+                linestyle='-',
+                color=algorithm_colors[algorithm],
+                markersize=3)
+
+        ax.set_xlabel('False Positive Rate', fontsize=10)
+        ax.set_ylabel('True Positive Rate', fontsize=10)
+
+        # Square axe
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_aspect('equal', adjustable='box')
+
+    fig.subplots_adjust(hspace=0.4)
+    #fig.subplots_adjust(vspace=0.4)
+
+    #set titles
+    axes[0, 0].set_title("TrainDay0_TestDay1234", pad=10, fontsize=14)
+    axes[0, 1].set_title("TrainDay01_TestDay234", pad=10, fontsize=14)
+    axes[0, 2].set_title("TrainDay012_TestDay34", pad=10, fontsize=14)
+    axes[0, 3].set_title("TrainDay0123_TestDay4", pad=10, fontsize=14)
+
+    pos = axes[0, 0].get_position()
+    y_center = (pos.y0 + pos.y1) / 2
+    fig.text(pos.x0 - 0.07, y_center, "AUROC", va='center', ha='center', fontsize=14, rotation=90)
+
+    pos = axes[1, 0].get_position()
+    y_center = (pos.y0 + pos.y1) / 2
+    fig.text(pos.x0 - 0.07, y_center, "AUPRIN", va='center', ha='center', fontsize=14, rotation=90)
+
+    pos = axes[2, 0].get_position()
+    y_center = (pos.y0 + pos.y1) / 2
+    fig.text(pos.x0 - 0.07, y_center, "AUPROUT", va='center', ha='center', fontsize=14, rotation=90)
+
+    # Create one shared legend
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels,
+               loc='lower center',
+               ncol=5,
+               bbox_to_anchor=(0.5, -0.01),
+               frameon=False,
+               fontsize=12)
+
+    # Adjust layout
+    fig.tight_layout()
+    fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.05)
+
+    # Save and close
+    fig.savefig(os.path.join(base_plot_dir, f"Plot_{general_settig['flow/samples']}_days.png"), format='png', dpi=general_settig['DPI'],
+                bbox_inches='tight',
+                facecolor='white')
+    plt.close(fig)
+
+
 
 def generate_plots(df_all):
     # Ensure the main plot folder exists
@@ -192,6 +307,7 @@ if __name__ == "__main__":
     df_all = generate_index_drawing(df_all)
 
     #generate_plots(df_all)
+    generate_plots_specific(df_all)
 
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
