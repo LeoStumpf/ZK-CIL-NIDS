@@ -4,6 +4,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plots_arregates
+import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import TwoSlopeNorm
+
 
 THRESHOLDS = [0.90, 0.95, 0.99]
 
@@ -91,6 +95,92 @@ def generate_index_drawing(df_all):
             df_all.at[idx, f'first_above_{int(threshold * 100)}'] = index
 
     return df_all
+
+def generate_plots_specific3(df_input):
+    base_plot_dir = "../04_pics/aggregated/special"
+    os.makedirs(base_plot_dir, exist_ok=True)
+
+    df_samples = df_input.copy()
+    df_samples = df_samples[df_samples['flow/samples'] == "samples"]
+    df_samples['first_above_99'] = pd.to_numeric(df_samples['first_above_99'], errors='coerce')
+
+    df_samples = df_samples[df_samples['dataset_name'].isin(Attack_datasets.keys())]
+    df_samples.loc[:, 'dataset_name'] = df_samples['dataset_name'].map(Attack_datasets)
+
+    colors = ["green", "orange", "red"]
+    cmap = LinearSegmentedColormap.from_list("custom_gradient", colors, N=256)
+
+    # Pivot the dataframe
+    heatmap_data = df_samples.pivot_table(
+        index='dataset_name',
+        columns='algorithm_name',
+        values='first_above_99',
+        aggfunc='min'  # or 'mean' if there are multiple values and you prefer average
+    )
+
+    # Plot heatmap
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(
+        heatmap_data,
+        annot=True,
+        fmt=".0f",
+        cmap=cmap,
+        cbar_kws={'label': 'First Above 99'},
+        vmin=0, vmax=200  # important for consistent coloring across heatmaps
+    )
+    #plt.title('Heatmap of First Above 99 Values')
+    #plt.xlabel('Algorithm')
+    #plt.ylabel('Dataset')
+    plt.xlabel('')
+    plt.ylabel('')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(base_plot_dir, "Plot_heatmap.png"),
+                format='png', dpi=100, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    # Extract the baseline values (where algorithm is 'NeuronalNetwork' or 'ran
+    baseline = df_samples[df_samples['algorithm_name'] == "Random"][['dataset_name', 'first_above_99']]
+    baseline = baseline.rename(columns={'first_above_99': 'baseline_value'})
+
+    # Merge baseline values back into the full dataframe
+    df_samples = df_samples.merge(baseline, on='dataset_name', how='left')
+
+    # Compute the difference to baseline
+    df_samples['difference_to_baseline'] =  df_samples['baseline_value'] - df_samples['first_above_99']
+
+    # Pivot to get matrix for heatmap
+    heatmap_diff = df_samples.pivot_table(
+        index='dataset_name',
+        columns='algorithm_name',
+        values='difference_to_baseline',
+        aggfunc='mean'  # or min, or first, based on your use case
+    )
+
+    # Plotting
+    plt.figure(figsize=(12, 8))
+    norm = TwoSlopeNorm(vmin=-10, vcenter=0, vmax=20)
+    sns.heatmap(
+        heatmap_diff,
+        annot=True,
+        fmt=".1f",
+        cmap="RdYlGn",  # Red → Yellow → Green
+        norm=norm,
+        center=0,  # 0 difference is orange/yellow
+        cbar_kws={'label': 'Difference to Baseline'}
+    )
+    #plt.title(f'Heatmap of Difference to random')
+    #plt.xlabel('Algorithm')
+    #plt.ylabel('Dataset')
+    plt.xlabel('')
+    plt.ylabel('')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(os.path.join(base_plot_dir, "Plot_heatmap_relative.png"),
+                format='png', dpi=100, bbox_inches='tight', facecolor='white')
+    plt.close()
+
 
 def generate_plots_specific2(df_input):
     base_plot_dir = "../04_pics/aggregated/special"
@@ -391,7 +481,8 @@ if __name__ == "__main__":
 
     #generate_plots(df_all)
     #generate_plots_specific(df_all)
-    generate_plots_specific2(df_all)
+    #generate_plots_specific2(df_all)
+    generate_plots_specific3(df_all)
 
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
