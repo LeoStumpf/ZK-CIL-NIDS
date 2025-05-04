@@ -1,25 +1,87 @@
-# **ZK-CIL-NIDS**  
-### *A Zero-Knowledge Class-Incremental Approach for Network Intrusion Detection*  
+# ZK-CIL-NIDS
 
-[![License](TBD)](LICENSE)  
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)  
-[![Status](https://img.shields.io/badge/status-active-success.svg)]()  
+**ZK-CIL-NIDS: A Zero-Knowledge Class-Incremental Approach for Network Intrusion Detection**
 
-## 🚀 Overview  
-**ZK-CIL-NIDS** is a **Zero-Knowledge Class-Incremental Learning (CIL) framework** for **Network Intrusion Detection Systems (NIDS)**. In previous work, a **ZK-CIL-NIDS** method was developed, which is used in this study but was not created as part of this paper. This repository and accompanying paper focus on **evaluating and comparing different CIL-NIDS approaches** from the literature, including our previously developed method, to determine their effectiveness in detecting unknown attack classes **without prior knowledge**. By leveraging **incremental learning and outlier scoring techniques**, we assess the performance of various methods in both **standard and zero-knowledge settings**, providing insights into their adaptability to **emerging cyber threats**.
+![Python 3.8](https://img.shields.io/badge/Python-3.8-blue.svg)
+![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## 🔥 Key Features  
-✅ **Zero-Knowledge Learning** – No prior attack labels or predefined knowledge required  
-✅ **Class-Incremental Learning (CIL)** – Detects and adapts to new attack classes dynamically  
-✅ **Outlier Scoring** – Evaluates the best scoring method for identifying novel threats  
-✅ **Scalability** – Designed to handle large-scale network traffic data  
-✅ **Extensible Framework** – Can be integrated with various NIDS architectures  
+---
+
+## 🧠 Project Overview
+
+This repository contains the implementation and experiments from the research paper:
+
+**ZK-CIL-NIDS: A Zero-Knowledge Class-Incremental Approach for Network Intrusion Detection**
+
+The goal of this research is to investigate and evaluate a the best novelty detection strategy for **network intrusion detection systems (NIDS)** without requiring prior knowledge of unseen attack classes — a setting we call **Zero-Knowledge Class-Incremental Learning (ZK-CIL)**.
+
+We aim to assess how novelty detection methods can be incrementally applied to evolving threat landscapes, where new types of attacks appear over time, using real-world intrusion datasets.
+
+---
+
+## 📊 Algorithms Compared
+
+The following novelty and outlier detection algorithms are evaluated:
+
+- `Random` (baseline)
+- `OneClassForestwoBootstrap`
+- `OneClassForest`
+- `IsolationForest`
+- `NeuronalNetworkLoss`
+- `NeuronalNetwork`
+- `OneClassSVN`
+- `EnergyFlowClassifier`
+- `DistanceLOF`
+- `LocalOutlierFactor`
+
+These models are tested under class-incremental scenarios to assess their ability to generalize across newly introduced attack classes.
+
+---
+
+## 🗂 Dataset and Splits
+
+Experiments are based on various incremental configurations of training and testing data, simulating real-world deployment where attacks emerge over time. We split the data as follows:
+
+### Day-Based Datasets
+
+| Dataset Name | Train Set | Test Set |
+|--------------|-----------|----------|
+| TrainDay0_TestDay1234 | BENIGN | BENIGN, FTP-Patator, SSH-Patator, DoS, Heartbleed, Web, Infiltration, Botnet, Portscan, DDoS |
+| TrainDay01_TestDay234 | BENIGN, FTP-Patator, SSH-Patator | BENIGN, DoS, Heartbleed, Web, Infiltration, Botnet, Portscan, DDoS |
+| TrainDay012_TestDay34 | BENIGN, FTP-Patator, SSH-Patator, DoS, Heartbleed | BENIGN, Web, Infiltration, Botnet, Portscan, DDoS |
+| TrainDay0123_TestDay4 | BENIGN, FTP-Patator, SSH-Patator, DoS, Heartbleed, Web, Infiltration | BENIGN, Botnet, Portscan, DDoS |
+
+### Attack-Specific Datasets
+
+| Dataset Name | Train Set | Test Set |
+|--------------|-----------|----------|
+| TrainDay0_DDoS | BENIGN | BENIGN, DDoS |
+| TrainDay0_DoS | BENIGN | BENIGN, DoS |
+| TrainDay0_FTPPatator | BENIGN | BENIGN, FTP-Patator |
+| TrainDay0_Heartbleed | BENIGN | BENIGN, Heartbleed |
+| TrainDay0_Infiltration | BENIGN | BENIGN, Infiltration |
+| TrainDay0_SSHPatator | BENIGN | BENIGN, SSH-Patator |
+| TrainDay0_Web | BENIGN | BENIGN, Web |
+
+---
+
+## 📁 Folder Structure
+
+```bash
+.
+├── Test/                # Test definitions and experiment entry points
+├── Plots/               # Visualization and postprocessing scripts
+├── Implementation/      # Custom novelty detection algorithm implementations
+├── datasets/            # Test and Trainings datasets (not uploaded to git)
+├── Helper/              # Auxiliary utility functions and helpers
+```
 
 ## 🛠️ Installation  
 
 ### **1️⃣ Clone the Repository**  
 ```bash
-git clone https://github.com/your-username/ZK-CIL-NIDS.git
+git clone https://github.com/LeoStumpf/ZK-CIL-NIDS
 cd ZK-CIL-NIDS
 ```
 
@@ -30,17 +92,13 @@ python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-### **📂 Project Structure**
+## 🚀 Running the Experiments
+Navigate to the Test/ directory and run any of the defined scripts for specific dataset evaluations or to reproduce paper results.
+
 ```bash
-📦 ZK-CIL-NIDS
-├── 📂 data                # Datasets and preprocessing scripts
-├── 📂 models              # Machine learning models for incremental learning
-├── 📂 evaluation          # Outlier scoring and performance evaluation scripts
-├── 📂 experiments         # Experiment scripts for different NIDS scenarios
-├── 📜 README.md           # Project documentation
-├── 📜 requirements.txt    # Python dependencies
-└── 📜 main.py             # Entry point for training and evaluation
+cd Test/
+python test1.py
 ```
 
-
-
+## 📄 License
+This project is licensed under the MIT License. You are free to use, modify, and distribute this software with proper attribution.

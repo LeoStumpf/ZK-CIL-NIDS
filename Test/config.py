@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 IMPLEMENTATIONS = [
-    #"Random",
+    "Random",
     #"OneClassForestwoBootstrap",
     #"OneClassForest",
     #"IsolationForest",
@@ -11,7 +11,7 @@ IMPLEMENTATIONS = [
     #"NeuronalNetwork",
     #"OneClassSVN",
     #"EnergyFlowClassifier",
-    "DistanceLOF",
+    #"DistanceLOF",
     #"LocalOutlierFactor"
 ]
 

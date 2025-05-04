@@ -28,14 +28,14 @@ class TestPredictFitFunctions(unittest.TestCase):
         #"TrainDay0_TestDay1234",
         #"TrainDay01_TestDay234",
         #"TrainDay012_TestDay34",
-        "TrainDay0123_TestDay4",
+        #"TrainDay0123_TestDay4",
         #"TrainDay0_DDos",
         #"TrainDay0_Dos",
         #"TrainDay0_FTPPatator",
         #"TrainDay0_Heartbleed",
         #"TrainDay0_Infiltration",
         #"TrainDay0_SSHPatator",
-        #"TrainDay0_TestBotnet",
+        "TrainDay0_TestBotnet",
         #"TrainDay0_PortScan",
         #"TrainDay0_Web"
     ]

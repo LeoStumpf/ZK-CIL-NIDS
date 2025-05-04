@@ -38,17 +38,17 @@ def fit(X, y):
     numeric_labels = label_encoder.fit_transform(y)
 
     # Train a RandomForestClassifier to predict labels
-    timer1 = Timer("RandomForest")
+    #timer1 = Timer("RandomForest")
     rf_model = RandomForestClassifier(n_estimators=100)
     rf_model.fit(X, numeric_labels)
-    timer1.stop()
+    #timer1.stop()
 
 
     # Iterate over each unique label in the dataset
     for label, number in zip(label_encoder.classes_, range(len(label_encoder.classes_))):
         label_count = (y == label).sum()
         print(f"Processing label {label} which appears {label_count} times")
-        timer1 = Timer(f"Prepare label {label}")
+        #timer1 = Timer(f"Prepare label {label}")
 
         # Filter the feature matrix to include only samples with the current label
         label_mask = y == label
@@ -77,10 +77,10 @@ def fit(X, y):
         #X_train_scaled = cp.asarray(X_train_scaled_np)
         #del X_train_scaled_np
         gc.collect()
-        timer1.stop()
+        #timer1.stop()
 
         print("train model")
-        timer1 = Timer(f"NearestNeighbors1 label {label}")
+        #timer1 = Timer(f"NearestNeighbors1 label {label}")
         # Fit the NearestNeighbors model to the scaled training data
         X_train_scaled_cp = cp.asarray(X_train_scaled_np)
         nn_model = NearestNeighbors(n_neighbors=nn_learn + 1, algorithm='brute', metric='manhattan')
@@ -92,7 +92,7 @@ def fit(X, y):
         cp._default_memory_pool.free_all_blocks()
 
         del nn_model
-        timer1.stop()
+        #timer1.stop()
 
         # Initialize arrays to store min and max values for each sample
         min_values = np.zeros((X_train_scaled_np.shape[0], X_train_scaled_np.shape[1]))
@@ -100,7 +100,7 @@ def fit(X, y):
 
         print("store data")
         # Find breakpoints in distances to identify local neighborhoods
-        timer1 = Timer(f"break_indices label {label}")
+        # = Timer(f"break_indices label {label}")
         break_indices = []
         for i in range(X_train_scaled_np.shape[0]):
             start_index = 2
@@ -116,7 +116,7 @@ def fit(X, y):
             # Calculate min and max values across the neighbors
             min_values[i] = np.min(X_train_scaled_np[indices[i, 0:break_index]], axis=0)
             max_values[i] = np.max(X_train_scaled_np[indices[i, 0:break_index]], axis=0)
-        timer1.stop()
+        #timer1.stop()
 
 
         if label == "BENIGN":
@@ -144,7 +144,7 @@ def fit(X, y):
         mean_distances = np.mean(min_values, axis=1)
         local_reachability_density = mean_distances + 1e-10
 
-        timer1 = Timer(f"fitFinalModelandStore label {label}")
+        #timer1 = Timer(f"fitFinalModelandStore label {label}")
         # Fit a NearestNeighbors model for testing
         nn = NearestNeighbors(n_neighbors=nn_test, algorithm='brute', metric='manhattan', handle=None)
         nn.fit(X_train_scaled_np)
@@ -177,7 +177,7 @@ def fit(X, y):
         cp._default_memory_pool.free_all_blocks()
         gc.collect()
         print("done. next run")
-        timer1.stop()
+        #timer1.stop()
 
     return lof_clusters, rf_model
 
@@ -268,7 +268,7 @@ def predict(X, Metadata, model):
     # Convert input data to CuPy array
     X_cp = cp.array(X)
 
-    timer1 = Timer("Generate LOFScore")
+    #timer1 = Timer("Generate LOFScore")
     # Generate LOF scores for each batch
     for start in range(0, X.shape[0], batch_size):
         end = min(start + batch_size, X.shape[0])
@@ -302,18 +302,18 @@ def predict(X, Metadata, model):
 
         # Assign LOF scores based on predicted labels
         lof_score = lof_scores[predicted_labels, np.arange(lof_scores.shape[1])]
-    timer1.stop()
+    #timer1.stop()
 
     # Perform clustering on the input data
-    timer1 = Timer("Cluster Data")
+    #timer1 = Timer("Cluster Data")
     cluster_index = cluster_data(X_cp).tolist()
     del(X_cp)
-    timer1.stop()
+    #timer1.stop()
 
     print("done with clustering")
 
     # Create a dictionary to store cluster information
-    timer1 = Timer("MetadataProcessiong")
+    #timer1 = Timer("MetadataProcessiong")
     cluster_dict = {}
     for cluster in set(cluster_index):
         inicis = np.where(np.array(cluster_index) == cluster)
@@ -335,5 +335,5 @@ def predict(X, Metadata, model):
 
     # Merge information gain scores with metadata
     Metadata = Metadata.merge(flow_groups[['flow_index', 'classInfoGain']], on='flow_index', how='left')
-    timer1.stop()
+    #timer1.stop()
     return Metadata['classInfoGain'].tolist()
