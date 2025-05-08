@@ -15,8 +15,8 @@ IMPLEMENTATIONS = [
     #"LocalOutlierFactor"
 ]
 
-base_path = "/home/leo/ZK-CIL-NIDS/dataset"
-def load_data(dataset_name, train_test):
+
+def load_data(base_path, dataset_name, train_test):
     path = os.path.join(base_path, dataset_name, f"Dataset{train_test}.npz")
 
     """Loads X, y, and aux_data from a .npz file."""

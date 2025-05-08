@@ -16,6 +16,8 @@ if not os.path.exists(LOG_FILE):
     with open(LOG_FILE, "w") as f:
         f.write("Timestamp, Implementation, Dataset, Status, Fit Time (s), Predict Time (s), Error\n")
 
+dataset_path = "/home/leo/ZK-CIL-NIDS/dataset"
+
 class TestPredictFitFunctions(unittest.TestCase):
     def log_result(self, implementation, dataset, status, fit_time=None, predict_time=None, error=""):
         """ Logs test results to a file. """
@@ -60,7 +62,7 @@ class TestPredictFitFunctions(unittest.TestCase):
                             print(f"Running {module_name} on {test_dataset}")
 
                             # Load training data
-                            X_train, y_train, _ = load_data(test_dataset, "Train")
+                            X_train, y_train, _ = load_data(dataset_path, test_dataset, "Train")
                             list_known = list(set(y_train))
 
                             # Fit model
@@ -75,7 +77,7 @@ class TestPredictFitFunctions(unittest.TestCase):
                             gc.collect()
 
                             # Load test data
-                            X_test, y_test, Metadata = load_data(test_dataset, "Test")
+                            X_test, y_test, Metadata = load_data(dataset_path, test_dataset, "Test")
 
                             # Predict
                             start_time_predict = time.time()
