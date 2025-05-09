@@ -34,7 +34,7 @@ class TestPredictFitFunctions(unittest.TestCase):
     day_datasets = [
         #"TrainDay0_TestDay1234",
         #"TrainDay01_TestDay234",
-        "TrainDay012_TestDay34",
+        #"TrainDay012_TestDay34",
         #"TrainDay0123_TestDay4",
         #"TrainDay0_DDos",
         #"TrainDay0_Dos",
@@ -44,7 +44,8 @@ class TestPredictFitFunctions(unittest.TestCase):
         #"TrainDay0_SSHPatator",
         #"TrainDay0_TestBotnet",
         #"TrainDay0_PortScan",
-        #"TrainDay0_Web"
+        #"TrainDay0_Web",
+        "TrainDay0_p12_TestDay34"
     ]
 
     def test_complete_days(self):
@@ -111,7 +112,7 @@ class TestPredictFitFunctions(unittest.TestCase):
                         #weights_for_plot = 1 - weights[:,LABEL_MAPPING["BENIGN"]]
                         #plot_weights(y_test, weights_for_plot, module_name, Metadata, plot_infos, list_known)
 
-                        plot_per_class(y_test, weights_rf_model, weights_novel_model)
+                        plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model.classes_)
 
                         # Log success
                         self.log_result(module_name, test_dataset, "PASSED", execution_time_fit, execution_time_predict)

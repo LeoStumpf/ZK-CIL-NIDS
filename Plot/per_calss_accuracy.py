@@ -1,6 +1,8 @@
 import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from Helper.LabelEncoder import encode_labels, LABEL_MAPPING
+import matplotlib.pyplot as plt
+import os
 
 def get_top_10_percent_per_chunk(weights_novel_model, num_chunks=30):
     weights_novel_model = np.array(weights_novel_model)
@@ -28,8 +30,62 @@ def get_top_10_percent_per_chunk(weights_novel_model, num_chunks=30):
     return np.array(top_indices)
 
 
+def actual_plot(results_base, results_adjusted):
+    # Prepare data
+    categories = []
+    values_base = []
+    values_adjusted = []
+
+    for key in results_base:
+        if key == 'BENIGN':
+            categories.append('Precision\nBENIGN')
+            values_base.append(results_base[key]['precision'])
+            values_adjusted.append(results_adjusted[key]['precision'])
+
+        categories.append(f"Recall\n{key}")
+        values_base.append(results_base[key]['recall'])
+        values_adjusted.append(results_adjusted[key]['recall'])
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+    y_pos = range(len(categories))
+    bar_width = 0.4
+
+    # Offset positions for grouping (base on top)
+    y_base = [y - bar_width / 2 for y in y_pos]
+    y_adjusted = [y + bar_width / 2 for y in y_pos]
+
+    bars_base = ax.barh(y_base, values_base, height=bar_width, color='#88BBDD', label='Performance without AL')
+    bars_adjusted = ax.barh(y_adjusted, values_adjusted, height=bar_width, color='#A3D9A5', label='Performance with AL')
+
+    # Add text annotations
+    for bar in bars_base:
+        ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height() / 2,
+                f"{bar.get_width():.4f}", va='center', ha='left')
+
+    for bar in bars_adjusted:
+        ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height() / 2,
+                f"{bar.get_width():.4f}", va='center', ha='left')
+
+    # Final touches
+    ax.set_facecolor('white')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(categories)
+    ax.invert_yaxis()  # Highest scores on top
+    ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+    ax.grid(False)
+    ax.set_xlabel('')
+    ax.set_title('NIPS Performance with and without AL', size=14)
+    ax.legend()
+
+    # Save and close
+    plt.tight_layout()
+    plt.savefig(os.path.join("../04_pics/aggregated/special", "NIPS_bar_plot.png"), format='png', dpi=100, bbox_inches='tight',
+                facecolor='white')
+    plt.close()
+
 # weights_novel_model: the higher the abnormal
-def plot_per_class(y_test, weights_rf_model, weights_novel_model):
+def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_classes):
     # Reverse mapping for decoding predictions
     INV_LABEL_MAPPING = {v: k for k, v in LABEL_MAPPING.items()}
 
@@ -37,7 +93,7 @@ def plot_per_class(y_test, weights_rf_model, weights_novel_model):
     y_true = np.array([LABEL_MAPPING[label] for label in y_test])
 
     # Predict class with highest probability from RF model
-    y_pred_base = np.argmax(weights_rf_model, axis=1)
+    y_pred_base = rf_model_classes[np.argmax(weights_rf_model, axis=1)]
 
     # Convert to string labels
     y_true_str = np.array([INV_LABEL_MAPPING[i] for i in y_true])
@@ -95,3 +151,6 @@ def plot_per_class(y_test, weights_rf_model, weights_novel_model):
         for metric, value in results_adjusted[cls].items():
             print(f"    {metric}: {value:.4f}")
         print()
+
+    #actually Plotting the stuff
+    actual_plot(results_base, results_adjusted)

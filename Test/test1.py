@@ -39,7 +39,8 @@ class TestPredictFitFunctions(unittest.TestCase):
         #"TrainDay0_SSHPatator",
         "TrainDay0_TestBotnet",
         #"TrainDay0_PortScan",
-        #"TrainDay0_Web"
+        #"TrainDay0_Web",
+        #"TrainDay0_p12_TestDay34"
     ]
 
     def test_complete_days(self):
