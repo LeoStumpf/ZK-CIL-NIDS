@@ -9,6 +9,11 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import TwoSlopeNorm
 
 
+# Plotting
+cm_to_inch = 1 / 2.54
+width_one_collum = 8.89  # single-column width
+height_cm = 12
+
 THRESHOLDS = [0.90, 0.95, 0.99]
 
 # Define datasets and implementations of interest
@@ -119,7 +124,7 @@ def generate_plots_specific3(df_input):
     )
 
     # Plot heatmap
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(width_one_collum * cm_to_inch, height_cm * cm_to_inch))
     sns.heatmap(
         heatmap_data,
         annot=True,
@@ -135,6 +140,16 @@ def generate_plots_specific3(df_input):
     plt.ylabel('')
     plt.xticks(rotation=45)
     plt.tight_layout()
+
+    # Set font sizes
+    plt.rcParams.update({
+        'font.size': 8,
+        'axes.titlesize': 8,
+        'axes.labelsize': 8,
+        'xtick.labelsize': 8,
+        'ytick.labelsize': 8,
+        'legend.fontsize': 8,
+    })
 
     plt.savefig(os.path.join(base_plot_dir, "Plot_heatmap.png"),
                 format='png', dpi=100, bbox_inches='tight', facecolor='white')
@@ -159,26 +174,39 @@ def generate_plots_specific3(df_input):
     )
 
     # Plotting
-    plt.figure(figsize=(12, 8))
+    #plt.figure(figsize=(12, 8))
+    height_in_cm = 8
+    plt.figure(figsize=(width_one_collum * cm_to_inch, height_in_cm * cm_to_inch))
     norm = TwoSlopeNorm(vmin=-10, vcenter=0, vmax=20)
     sns.heatmap(
         heatmap_diff,
         annot=True,
-        fmt=".1f",
+        fmt=".0f",
         cmap="RdYlGn",  # Red → Yellow → Green
         norm=norm,
         center=0,  # 0 difference is orange/yellow
-        cbar_kws={'label': 'Difference to Baseline'}
+        cbar_kws={'label': 'Difference to Baseline (Random)'},
+        annot_kws={"size": 6},  # Set font size of annotations
+        square=True  # This makes each cell a square
     )
     #plt.title(f'Heatmap of Difference to random')
     #plt.xlabel('Algorithm')
     #plt.ylabel('Dataset')
     plt.xlabel('')
     plt.ylabel('')
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
+    # Set font sizes
+    plt.rcParams.update({
+        'font.size': 8,
+        'axes.titlesize': 8,
+        'axes.labelsize': 8,
+        'xtick.labelsize': 8,
+        'ytick.labelsize': 8,
+        'legend.fontsize': 8,
+    })
     plt.savefig(os.path.join(base_plot_dir, "Plot_heatmap_relative.png"),
-                format='png', dpi=100, bbox_inches='tight', facecolor='white')
+                format='png', dpi=400, bbox_inches='tight', facecolor='white')
     plt.close()
 
 
