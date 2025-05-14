@@ -526,7 +526,16 @@ if __name__ == "__main__":
         for dataset in ["TrainDay0_TestDay1234", "TrainDay01_TestDay234", "TrainDay012_TestDay34", "TrainDay0123_TestDay4"]:
             f.write(f"{sanitize_latex(dataset)} & Fit Time & Predict Time & AUPRIN & AUPROUT & AUROC & i\_drawn & $\geq 0.9\%$ & $\geq 0.95\%$ & $\geq 0.99\%$ \\\\\n")
             f.write("\\midrule\n")
-            for impl in IMPLEMENTATIONS:
+
+            # Sort the dataframe
+            sorted_df = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples)].sort_values(
+                by='first_above_99',
+                key=lambda x: x.where(pd.notna(x), np.inf)  # Put NaNs at the bottom
+            )
+            sorted_IMPLEMENTATIONS = sorted_df['algorithm_name'].tolist()
+
+            #for impl in IMPLEMENTATIONS:
+            for impl in sorted_IMPLEMENTATIONS:
                 print_table_lines(df_all, dataset, "samples", impl)
             f.write("\\midrule\n")
         f.write("\\bottomrule\n")

@@ -52,7 +52,7 @@ def actual_plot(results_base, results_adjusted, results_al):
     # Plotting
     cm_to_inch = 1 / 2.54
     width_cm = 8.89  # single-column width
-    height_cm = 12 
+    height_cm = 12
 
     fig, ax = plt.subplots(figsize=(width_cm * cm_to_inch, height_cm * cm_to_inch), facecolor='white')
 
