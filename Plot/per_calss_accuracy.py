@@ -30,33 +30,43 @@ def get_top_10_percent_per_chunk(weights_novel_model, num_chunks=30):
     return np.array(top_indices)
 
 
-def actual_plot(results_base, results_adjusted):
+def actual_plot(results_base, results_adjusted, results_al):
     # Prepare data
     categories = []
     values_base = []
     values_adjusted = []
+    values_al = []
 
     for key in results_base:
         if key == 'BENIGN':
             categories.append('Precision\nBENIGN')
             values_base.append(results_base[key]['precision'])
             values_adjusted.append(results_adjusted[key]['precision'])
+            values_al.append(results_al[key]['precision'])
 
         categories.append(f"Recall\n{key}")
         values_base.append(results_base[key]['recall'])
         values_adjusted.append(results_adjusted[key]['recall'])
+        values_al.append(results_al[key]['recall'])
 
     # Plotting
-    fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
+    cm_to_inch = 1 / 2.54
+    width_cm = 8.89  # single-column width
+    height_cm = 12 
+
+    fig, ax = plt.subplots(figsize=(width_cm * cm_to_inch, height_cm * cm_to_inch), facecolor='white')
+
     y_pos = range(len(categories))
-    bar_width = 0.4
+    bar_width = 0.25
 
     # Offset positions for grouping (base on top)
-    y_base = [y - bar_width / 2 for y in y_pos]
-    y_adjusted = [y + bar_width / 2 for y in y_pos]
+    y_base = [y - bar_width for y in y_pos]
+    y_adjusted = list(y_pos)
+    y_al = [y + bar_width for y in y_pos]
 
-    bars_base = ax.barh(y_base, values_base, height=bar_width, color='#88BBDD', label='Performance without AL')
-    bars_adjusted = ax.barh(y_adjusted, values_adjusted, height=bar_width, color='#A3D9A5', label='Performance with AL')
+    bars_base = ax.barh(y_base, values_base, height=bar_width, color='#848482', label='Closed-Set')
+    bars_adjusted = ax.barh(y_adjusted, values_adjusted, height=bar_width, color='#38ACEC', label='Block Unknown')
+    bars_al = ax.barh(y_al, values_al, height=bar_width, color='#7FFFD4', label='AL')
 
     # Add text annotations
     for bar in bars_base:
@@ -64,6 +74,10 @@ def actual_plot(results_base, results_adjusted):
                 f"{bar.get_width():.4f}", va='center', ha='left')
 
     for bar in bars_adjusted:
+        ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height() / 2,
+                f"{bar.get_width():.4f}", va='center', ha='left')
+
+    for bar in bars_al:
         ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height() / 2,
                 f"{bar.get_width():.4f}", va='center', ha='left')
 
@@ -75,17 +89,29 @@ def actual_plot(results_base, results_adjusted):
     ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
     ax.grid(False)
     ax.set_xlabel('')
-    ax.set_title('NIPS Performance with and without AL', size=14)
-    ax.legend()
+    ax.set_title('')
+
+    # Move legend below the plot in a horizontal row
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False, fontsize=8)
+
+    # Set font sizes
+    plt.rcParams.update({
+        'font.size': 8,
+        'axes.titlesize': 8,
+        'axes.labelsize': 8,
+        'xtick.labelsize': 8,
+        'ytick.labelsize': 8,
+        'legend.fontsize': 8,
+    })
 
     # Save and close
     plt.tight_layout()
-    plt.savefig(os.path.join("../04_pics/aggregated/special", "NIPS_bar_plot.png"), format='png', dpi=100, bbox_inches='tight',
+    plt.savefig(os.path.join("../04_pics/aggregated/special", "NIPS_bar_plot.png"), format='png', dpi=400, bbox_inches='tight',
                 facecolor='white')
     plt.close()
 
 # weights_novel_model: the higher the abnormal
-def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_classes):
+def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_classes, weights_rf_model_AL, rf_model_classes_AL):
     # Reverse mapping for decoding predictions
     INV_LABEL_MAPPING = {v: k for k, v in LABEL_MAPPING.items()}
 
@@ -94,10 +120,12 @@ def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_class
 
     # Predict class with highest probability from RF model
     y_pred_base = rf_model_classes[np.argmax(weights_rf_model, axis=1)]
+    y_pred_al = rf_model_classes_AL[np.argmax(weights_rf_model_AL, axis=1)]
 
     # Convert to string labels
     y_true_str = np.array([INV_LABEL_MAPPING[i] for i in y_true])
     y_pred_base_str = np.array([INV_LABEL_MAPPING[i] for i in y_pred_base])
+    y_pred_al_str = np.array([INV_LABEL_MAPPING[i] for i in y_pred_al])
 
     # --- Metrics BEFORE novelty adjustment ---
     unique_classes = np.unique(y_true_str)
@@ -108,6 +136,20 @@ def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_class
         y_pred_binary = (y_pred_base_str == cls).astype(int)
 
         results_base[cls] = {
+            'precision': precision_score(y_true_binary, y_pred_binary, zero_division=0),
+            'recall': recall_score(y_true_binary, y_pred_binary, zero_division=0),
+            'f1_score': f1_score(y_true_binary, y_pred_binary, zero_division=0),
+            'accuracy': accuracy_score(y_true_binary, y_pred_binary)
+        }
+
+    # --- Metrics AL adjustment ---
+    results_al = {}
+
+    for cls in unique_classes:
+        y_true_binary = (y_true_str == cls).astype(int)
+        y_pred_binary = (y_pred_al_str == cls).astype(int)
+
+        results_al[cls] = {
             'precision': precision_score(y_true_binary, y_pred_binary, zero_division=0),
             'recall': recall_score(y_true_binary, y_pred_binary, zero_division=0),
             'f1_score': f1_score(y_true_binary, y_pred_binary, zero_division=0),
@@ -150,7 +192,10 @@ def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_class
         print("  AFTER adjustment:")
         for metric, value in results_adjusted[cls].items():
             print(f"    {metric}: {value:.4f}")
+        print("  AFTER AL:")
+        for metric, value in results_al[cls].items():
+            print(f"    {metric}: {value:.4f}")
         print()
 
     #actually Plotting the stuff
-    actual_plot(results_base, results_adjusted)
+    actual_plot(results_base, results_adjusted, results_al)

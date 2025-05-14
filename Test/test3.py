@@ -23,6 +23,31 @@ if not os.path.exists(LOG_FILE):
 
 dataset_path = "/home/leo/ZK-CIL-NIDS/dataset"
 
+def get_top_per_chunk(weights_novel_model, num_chunks=30):
+    weights_novel_model = np.array(weights_novel_model)
+    n = len(weights_novel_model)
+    chunk_size = n // num_chunks
+    top_indices = []
+
+    for i in range(num_chunks):
+        start = i * chunk_size
+        # Ensure last chunk includes any remainder
+        end = (i + 1) * chunk_size if i < num_chunks - 1 else n
+        chunk = weights_novel_model[start:end]
+
+        # Get threshold for top 10% within the chunk
+        if len(chunk) == 0:
+            continue  # skip empty chunks (can happen if n < num_chunks)
+        threshold = np.percentile(chunk, 80)
+
+        # Get indices in the original array
+        chunk_indices = np.arange(start, end)
+        top_chunk_indices = chunk_indices[chunk >= threshold]
+
+        top_indices.extend(top_chunk_indices)
+
+    return np.array(top_indices)
+
 class TestPredictFitFunctions(unittest.TestCase):
     def log_result(self, implementation, dataset, status, fit_time=None, predict_time=None, error=""):
         """ Logs test results to a file. """
@@ -84,16 +109,43 @@ class TestPredictFitFunctions(unittest.TestCase):
                         execution_time_fit = end_time_fit - start_time_fit
 
                         # Free training data
-                        del X_train, y_train, _
-                        cp._default_memory_pool.free_all_blocks()
-                        gc.collect()
+                        #del X_train, y_train, _
+                        #cp._default_memory_pool.free_all_blocks()
+                        #gc.collect()
 
                         # Load test data
-                        X_test, y_test, Metadata = load_data(dataset_path, test_dataset, "Test")
+                        X_test, y_test, Metadata = load_data(dataset_path, test_dataset, "Test_AL")
 
                         # Predict
                         start_time_predict = time.time()
                         weights_rf_model = rf_model.predict_proba(X_test)
+                        weights_novel_model = predict(X_test, Metadata, novelty_model)
+
+
+                        #new
+                        orig_rf_model_classes_ = rf_model.classes_
+                        tops = get_top_per_chunk(weights_novel_model)
+                        X_train =  np.concatenate([X_train, X_test[tops]], axis=0)
+                        y_train = np.concatenate([y_train, y_test[tops]], axis=0)
+
+                        #retrain model
+                        start_time_fit = time.time()
+                        # Fit RF-model
+                        numeric_labels = encode_labels(y_train)
+                        rf_model = RandomForestClassifier(n_estimators=100)
+                        rf_model.fit(X_train, numeric_labels)
+
+                        # Fit Novelty-model
+                        novelty_model = fit(X_train, y_train)
+                        end_time_fit = time.time()
+                        execution_time_fit = end_time_fit - start_time_fit
+
+                        # Load test data
+                        X_test, y_test, Metadata = load_data(dataset_path, test_dataset, "Test_AL")
+
+                        # Predict
+                        start_time_predict = time.time()
+                        weights_rf_model_AL = rf_model.predict_proba(X_test)
                         weights_novel_model = predict(X_test, Metadata, novelty_model)
 
                         #weights = predict(X_test, Metadata, model)
@@ -112,7 +164,7 @@ class TestPredictFitFunctions(unittest.TestCase):
                         #weights_for_plot = 1 - weights[:,LABEL_MAPPING["BENIGN"]]
                         #plot_weights(y_test, weights_for_plot, module_name, Metadata, plot_infos, list_known)
 
-                        plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model.classes_)
+                        plot_per_class(y_test, weights_rf_model, weights_novel_model, orig_rf_model_classes_, weights_rf_model_AL, rf_model.classes_)
 
                         # Log success
                         self.log_result(module_name, test_dataset, "PASSED", execution_time_fit, execution_time_predict)
