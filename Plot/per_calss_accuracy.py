@@ -4,6 +4,8 @@ from Helper.LabelEncoder import encode_labels, LABEL_MAPPING
 import matplotlib.pyplot as plt
 import os
 
+LATEX_FILE = "output_tables_1.tex"
+
 def get_top_10_percent_per_chunk(weights_novel_model, num_chunks=30):
     weights_novel_model = np.array(weights_novel_model)
     n = len(weights_novel_model)
@@ -31,7 +33,6 @@ def get_top_10_percent_per_chunk(weights_novel_model, num_chunks=30):
 
 
 def actual_plot(results_base, results_adjusted, results_al):
-    colors = ["#00529E", "#9E5226", "#008000"]
 
     # Prepare data
     categories = []
@@ -112,6 +113,45 @@ def actual_plot(results_base, results_adjusted, results_al):
     plt.savefig(os.path.join("../04_pics/aggregated/special", "NIPS_bar_plot2.png"), format='png', dpi=400, bbox_inches='tight',
                 facecolor='white')
     plt.close()
+
+    # Generation of LaTeX table string from data
+    # classes = ["BENIGN", "DoS", "DDoS", "Botnet", "Portscan"]
+    # classes = results_base.keys()
+    classes = ["BENIGN", "SSH-Patator", "FTP-Patator", "Heartbleed", "DoS", "DDoS", "Infiltration", "Botnet", "Portscan", "Web"] # sorted according to resoults
+
+    latex_table = r"""
+    \begin{table}[h]
+    \centering
+    \begin{tabular}{lcccccc}
+    \hline
+    \textbf{Class} & \multicolumn{2}{c}{\textbf{CS}} & \multicolumn{2}{c}{\textbf{CS+Novelty}} & \multicolumn{2}{c}{\textbf{CS+AL}} \\
+                   & \textbf{P} & \textbf{R} & \textbf{P} & \textbf{R} & \textbf{P} & \textbf{R} \\
+    \hline
+    """
+
+    for cls in classes:
+        p_base = results_base[cls]['precision'] * 100
+        r_base = results_base[cls]['recall'] * 100
+        p_adj = results_adjusted[cls]['precision'] * 100
+        r_adj = results_adjusted[cls]['recall'] * 100
+        p_al = results_al[cls]['precision'] * 100
+        r_al = results_al[cls]['recall'] * 100
+
+        latex_table += f"{cls} & {p_base:.2f} & {r_base:.2f} & {p_adj:.2f} & {r_adj:.2f} & {p_al:.2f}& {r_al:.2f} \\\\\n"
+
+    latex_table += r"""\hline
+    \end{tabular}
+    \caption{NIDS performance standalone, Novelty, and AL}
+    \label{tab:precision_recall}
+    \end{table}
+    """
+
+    # Write to file
+    with open(LATEX_FILE, "w", encoding="utf-8") as f:
+        f.write("\\documentclass{article}\n\\usepackage{booktabs}\n\\begin{document}\n")
+        f.write(latex_table)
+        f.write("\n\\end{document}")
+
 
 # weights_novel_model: the higher the abnormal
 def plot_per_class(y_test, weights_rf_model, weights_novel_model, rf_model_classes, weights_rf_model_AL, rf_model_classes_AL):

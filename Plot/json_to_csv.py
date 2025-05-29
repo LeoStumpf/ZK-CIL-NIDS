@@ -7,6 +7,7 @@ import plots_arregates
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import TwoSlopeNorm
+import Test.config as config
 
 
 # Plotting
@@ -30,6 +31,8 @@ IMPLEMENTATIONS = [
     "LocalOutlierFactor",
     "Random"
 ]
+
+IMPLEMENTATIONS = [config.exact_replacements[elemtn] for elemtn in IMPLEMENTATIONS]
 
 Attack_datasets = {
     'TrainDay0_DDos': 'DDOS',
@@ -125,6 +128,7 @@ def generate_plots_specific3(df_input):
     )
 
     # Plot heatmap
+    height_cm = 12.5
     plt.figure(figsize=(width_one_collum * cm_to_inch, height_cm * cm_to_inch))
     sns.heatmap(
         heatmap_data,
@@ -157,7 +161,7 @@ def generate_plots_specific3(df_input):
     plt.close()
 
     # Extract the baseline values (where algorithm is 'NeuronalNetwork' or 'ran
-    baseline = df_samples[df_samples['algorithm_name'] == "Random"][['dataset_name', 'first_above_99']]
+    baseline = df_samples[df_samples['algorithm_name'] == config.exact_replacements["Random"]][['dataset_name', 'first_above_99']]
     baseline = baseline.rename(columns={'first_above_99': 'baseline_value'})
 
     # Merge baseline values back into the full dataframe
@@ -176,18 +180,18 @@ def generate_plots_specific3(df_input):
 
     # Plotting
     #plt.figure(figsize=(12, 8))
-    height_in_cm = 8
+    height_in_cm = 6
     plt.figure(figsize=(width_one_collum * cm_to_inch, height_in_cm * cm_to_inch))
     norm = TwoSlopeNorm(vmin=-10, vcenter=0, vmax=20)
     sns.heatmap(
         heatmap_diff,
         annot=True,
         fmt=".0f",
-        #cmap="RdYlGn",  # Red → Yellow → Green
-        cmap=cmap,
+        cmap="RdYlGn",  # Red → Yellow → Green
+        #cmap=cmap,
         norm=norm,
         center=0,  # 0 difference is orange/yellow
-        cbar_kws={'label': 'Difference to Baseline (Random)'},
+        cbar_kws={'label': 'Difference to Baseline (' + config.exact_replacements["Random"] + ")"},
         annot_kws={"size": 6},  # Set font size of annotations
         square=True  # This makes each cell a square
     )
@@ -419,7 +423,7 @@ def generate_plots_specific4(df_input):
 
 
     # Assuming df_samples is your DataFrame and algorithm_colors is your color dictionary
-    height_cm = 8
+    height_cm = 6
     width_cm = 15
     fig, ax = plt.subplots(figsize=(width_one_collum * cm_to_inch, height_cm * cm_to_inch))
 
@@ -553,8 +557,9 @@ def print_table_lines_shorted(df_all, dataset, flow_samples, impl):
 
     line = " & ".join([
         sanitize_latex(row["algorithm_name"]),
-        f"{float(sanitize_latex(row['AUROC'])) * 100:.3f}\%",
-        f"{float(sanitize_latex(row['AUPROUT'])) * 100:.3f}\%",
+        f"{float(sanitize_latex(row['AUROC'])) * 100:.2f}",
+        f"{float(sanitize_latex(row['AUPRIN'])) * 100:.2f}",
+        f"{float(sanitize_latex(row['AUPROUT'])) * 100:.2f}",
         sanitize_latex(row["first_above_99"])
     ]) + " \\\\\n"
     f.write(line)
@@ -590,6 +595,9 @@ if __name__ == "__main__":
 
     # Convert to DataFrame
     df_all = pd.DataFrame(df_dicts)
+
+    # Apply exact replacements
+    df_all['algorithm_name'] = df_all['algorithm_name'].replace(config.exact_replacements)
 
     # Generate DF drawn index
     df_all = generate_index_drawing(df_all)
@@ -649,6 +657,7 @@ if __name__ == "__main__":
                 key=lambda x: x.where(pd.notna(x), np.inf)  # Put NaNs at the bottom
             )
             sorted_IMPLEMENTATIONS = sorted_df['algorithm_name'].tolist()
+            sorted_IMPLEMENTATIONS = [alg for alg in sorted_IMPLEMENTATIONS if alg in IMPLEMENTATIONS]
 
             #for impl in IMPLEMENTATIONS:
             for impl in sorted_IMPLEMENTATIONS:
@@ -663,7 +672,9 @@ if __name__ == "__main__":
         f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
         f.write("\\toprule\n")
         for dataset in ["TrainDay0_TestDay1234", "TrainDay012_TestDay34"]:
-            f.write(f"{sanitize_latex(dataset)} & AUROC & AUPROUT & $\geq 0.99\%$ \\\\\n")
+            dataset_str = dataset.split("_")
+            f.write(f"{sanitize_latex(dataset_str[0])} \\\\\n")
+            f.write(f"{sanitize_latex(dataset_str[1])} & AUROC & AUPRIN & AUPROUT & $\geq 0.99\%$ \\\\\n")
             f.write("\\midrule\n")
 
             # Sort the dataframe
@@ -672,6 +683,7 @@ if __name__ == "__main__":
                 key=lambda x: x.where(pd.notna(x), np.inf)  # Put NaNs at the bottom
             )
             sorted_IMPLEMENTATIONS = sorted_df['algorithm_name'].tolist()
+            sorted_IMPLEMENTATIONS = [alg for alg in sorted_IMPLEMENTATIONS if alg in IMPLEMENTATIONS]
 
             # for impl in IMPLEMENTATIONS:
             for impl in sorted_IMPLEMENTATIONS:
