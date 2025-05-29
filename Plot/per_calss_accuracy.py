@@ -31,13 +31,16 @@ def get_top_10_percent_per_chunk(weights_novel_model, num_chunks=30):
 
 
 def actual_plot(results_base, results_adjusted, results_al):
+    colors = ["#00529E", "#9E5226", "#008000"]
+
     # Prepare data
     categories = []
     values_base = []
     values_adjusted = []
     values_al = []
 
-    for key in results_base:
+    # for key in results_base:
+    for key in ["DoS", "DDoS", "Botnet", "Portscan"]:
         if key == 'BENIGN':
             categories.append('Precision\nBENIGN')
             values_base.append(results_base[key]['precision'])
@@ -52,7 +55,7 @@ def actual_plot(results_base, results_adjusted, results_al):
     # Plotting
     cm_to_inch = 1 / 2.54
     width_cm = 8.89  # single-column width
-    height_cm = 12
+    height_cm = 6
 
     fig, ax = plt.subplots(figsize=(width_cm * cm_to_inch, height_cm * cm_to_inch), facecolor='white')
 
@@ -64,9 +67,9 @@ def actual_plot(results_base, results_adjusted, results_al):
     y_adjusted = list(y_pos)
     y_al = [y + bar_width for y in y_pos]
 
-    bars_base = ax.barh(y_base, values_base, height=bar_width, color='#848482', label='Closed-Set')
-    bars_adjusted = ax.barh(y_adjusted, values_adjusted, height=bar_width, color='#38ACEC', label='Block Unknown')
-    bars_al = ax.barh(y_al, values_al, height=bar_width, color='#7FFFD4', label='AL')
+    bars_base = ax.barh(y_base, values_base, height=bar_width, color='#9E5226', label='Closed-Set')
+    bars_adjusted = ax.barh(y_adjusted, values_adjusted, height=bar_width, color='#00529E', label='Block Unknown')
+    bars_al = ax.barh(y_al, values_al, height=bar_width, color='#008000', label='AL')
 
     # Add text annotations
     for bar in bars_base:
@@ -106,7 +109,7 @@ def actual_plot(results_base, results_adjusted, results_al):
 
     # Save and close
     plt.tight_layout()
-    plt.savefig(os.path.join("../04_pics/aggregated/special", "NIPS_bar_plot.png"), format='png', dpi=400, bbox_inches='tight',
+    plt.savefig(os.path.join("../04_pics/aggregated/special", "NIPS_bar_plot2.png"), format='png', dpi=400, bbox_inches='tight',
                 facecolor='white')
     plt.close()
 

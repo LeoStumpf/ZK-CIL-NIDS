@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from .plots import Plot_AUPRIN, Plot_TprFpr, Plot_AUPROUT, Plot_TruePositivesRate, Plot_DrawingProbability
-from sklearn.metrics import auc  # Import the auc function from sklearn
+from sklearn.metrics import auc, precision_score  # Import the auc function from sklearn
 import json
 
 def convert_ndarrays_to_lists(obj):
@@ -95,10 +95,21 @@ def calculation(y, lof_score, list_known):
     y = np.array(y, dtype=str)
     uncertainties = np.array(lof_score, dtype=np.float32)
 
-    # Create Bins with equal amount of things
-    percentiles = np.linspace(0, 100, 99)
-    thresholds = np.percentile(uncertainties, percentiles)
-    thresholds = np.unique(thresholds).tolist()
+    # Split uncertainties into 50 equal-length sections (not sorted)
+    n_sections = 50
+    section_size = len(uncertainties) // n_sections
+    sections = [
+        uncertainties[i * section_size:(i + 1) * section_size] if i < n_sections - 1 else uncertainties[i * section_size:]
+        for i in range(n_sections)
+    ]
+
+    thresholds_sections = list()
+    for section in sections:
+        # Create Bins with equal amount of things
+        percentiles = np.linspace(0, 100, 99)
+        thresholds = np.percentile(section, percentiles).tolist()
+        #thresholds = np.unique(thresholds).tolist()
+        thresholds_sections.append(thresholds)
 
     # all the known classes are considered as the positive class
     # and the unknown class is considered as the negative class
@@ -118,10 +129,25 @@ def calculation(y, lof_score, list_known):
     detection_errors = []
     output = dict()
 
-    for threshold in thresholds:
-        y_Predicted_Positive = (uncertainties < threshold)  # Predict sample as known (positive) if uncertainty is low
-        y_Predicted_Positive_AUPROUT = (uncertainties >= threshold)  # Predict sample as unknown (positive for AUPROUT) if uncertainty is high
+    # For each percentile threshold index
+    for threshold_num in range(len(thresholds_sections[0])):
+        y_Predicted_Positive_parts = []
+        y_Predicted_Positive_AUPROUT_parts = []
+
+        for section_idx, section in enumerate(sections):
+            threshold = thresholds_sections[section_idx][threshold_num]
+
+            section_prediction_pos = section < threshold
+            section_prediction_auprout = section >= threshold
+
+            y_Predicted_Positive_parts.append(section_prediction_pos)
+            y_Predicted_Positive_AUPROUT_parts.append(section_prediction_auprout)
+
+        # Combine predictions from all sections
+        y_Predicted_Positive = np.concatenate(y_Predicted_Positive_parts)
+        y_Predicted_Positive_AUPROUT = np.concatenate(y_Predicted_Positive_AUPROUT_parts)  # Predict sample as unknown (positive for AUPROUT) if uncertainty is high
         num_positive = np.sum(y_Predicted_Positive)
+        thresholds = thresholds_sections[0]
 
         # Compute TP, FP, FN based on conditions
         tp = np.sum( y_Actual_Postitive &  y_Predicted_Positive) # True Positives: Known correctly predicted as known
@@ -216,4 +242,62 @@ def calculation(y, lof_score, list_known):
     #store value range
     output["min_max"] = [min(lof_score), max(lof_score)]
     output["thresholds"] = thresholds
+
+    # all the known classes are considered as the positive class
+    # and the unknown class is considered as the negative class
+
+    #get number of questions graph data
+    y_Predicted_Positive_parts = []
+    y_Predicted_Positive_AUPROUT_parts = []
+    nr_quesitons = [1,2,5,10,20,50, 100,200,1000, 2000, 5000, 10000, 20000]
+
+    # Track precision results
+    total_nr_questions = []
+    precision_per_question = []
+    recall_per_question = []
+    unknown_per_question = []
+    tn_per_question = []
+
+    for nr_question in nr_quesitons:
+        y_Predicted_Positive_parts = []  # Predicted known
+
+        for section in sections:
+            k = min(nr_question, len(section))  # Avoid out-of-bounds
+
+            # Get indices of top-k highest uncertainties (most likely unknown)
+            topk_indices = np.argpartition(-section, k - 1)[:k]
+
+            # Create mask: all True (known), then set top-k to False (unknown)
+            section_prediction = np.ones_like(section, dtype=bool)
+            section_prediction[topk_indices] = False  # Predict as unknown → not positive
+
+            y_Predicted_Positive_parts.append(section_prediction)
+
+        # Merge predictions across all sections
+        y_Predicted_Positive = np.concatenate(y_Predicted_Positive_parts)
+        total_nr_question = int(np.sum(~y_Predicted_Positive))
+
+        # Calculate precision (how many of predicted known were actually known)
+        tp = np.sum(y_Actual_Postitive & y_Predicted_Positive)  # True Positives: Known correctly predicted as known
+        tn = np.sum(~y_Actual_Postitive & ~y_Predicted_Positive)  # True Negatives: Unknown correctly predicted as unknown
+        fp = np.sum(~y_Actual_Postitive & y_Predicted_Positive)  # False Positives: Unknown incorrectly predicted as known
+        fn = np.sum(y_Actual_Postitive & ~y_Predicted_Positive)  # False Negatives: Known incorrectly predicted as unknown
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        true_unknown = tn /total_nr_question
+
+        total_nr_questions.append(total_nr_question)
+        precision_per_question.append(precision)
+        recall_per_question.append(recall)
+        unknown_per_question.append(true_unknown)
+        tn_per_question.append(int(tn))
+
+    output["nr_quesitons"] = nr_quesitons
+    output["total_nr_questions"] = total_nr_questions
+    output["precision_per_question"] = precision_per_question
+    output["recall_per_question"] = recall_per_question
+    output["unknown_percent_per_question"] = unknown_per_question
+    output["unknown_absolut_per_question"] = tn_per_question
+
     return output

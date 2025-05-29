@@ -4,15 +4,15 @@ import os
 
 IMPLEMENTATIONS = [
     "Random",
-    #"OneClassForestwoBootstrap",
-    #"OneClassForest",
-    #"IsolationForest",
-    #"NeuronalNetworkLoss",
-    #"NeuronalNetwork",
-    #"OneClassSVN",
-    #"EnergyFlowClassifier",
-    #"DistanceLOF",
-    #"LocalOutlierFactor"
+    "OneClassForestwoBootstrap",
+    "OneClassForest",
+    "IsolationForest",
+    "NeuronalNetworkLoss",
+    "NeuronalNetwork",
+    "OneClassSVN",
+    "EnergyFlowClassifier",
+    "DistanceLOF",
+    "LocalOutlierFactor"
 ]
 
 

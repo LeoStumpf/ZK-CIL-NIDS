@@ -112,7 +112,8 @@ def generate_plots_specific3(df_input):
     df_samples = df_samples[df_samples['dataset_name'].isin(Attack_datasets.keys())]
     df_samples.loc[:, 'dataset_name'] = df_samples['dataset_name'].map(Attack_datasets)
 
-    colors = ["green", "orange", "red"]
+    #colors = ["green", "orange", "red"]
+    colors = ["#00529E", "#9E5226", "#008000"]
     cmap = LinearSegmentedColormap.from_list("custom_gradient", colors, N=256)
 
     # Pivot the dataframe
@@ -182,7 +183,8 @@ def generate_plots_specific3(df_input):
         heatmap_diff,
         annot=True,
         fmt=".0f",
-        cmap="RdYlGn",  # Red → Yellow → Green
+        #cmap="RdYlGn",  # Red → Yellow → Green
+        cmap=cmap,
         norm=norm,
         center=0,  # 0 difference is orange/yellow
         cbar_kws={'label': 'Difference to Baseline (Random)'},
@@ -316,6 +318,10 @@ def generate_plots_specific(df_all):
         filtered = filtered.sort_values(by="algorithm_name")
         for _, row in filtered.iterrows():
             algorithm = row["algorithm_name"]
+
+            if algorithm not in IMPLEMENTATIONS:
+                continue
+
             if plot["metric"] == "AUROC":
                 fpr_scores = row["fpr_scores"]
                 tpr_scores = row["tpr_scores"]
@@ -394,6 +400,65 @@ def generate_plots_specific(df_all):
                 facecolor='white')
     plt.close(fig)
 
+def generate_plots_specific4(df_input):
+    base_plot_dir = "../04_pics/aggregated/special"
+    os.makedirs(base_plot_dir, exist_ok=True)
+
+    # nb of questions
+    nb_question = [1,2,3,4,5,7,10,20,30,50]
+
+    df_samples = df_input.copy()
+    df_samples = df_samples[(df_samples['flow/samples'] == "samples") & (df_samples['dataset_name'] == "TrainDay01_TestDay234")]
+
+    # Convert x-axis to categories
+    #unique_x = list(df_samples["total_nr_questions"])[0]
+    unique_x = nb_question
+    x_labels = [str(x) for x in unique_x]
+    x_pos = range(len(unique_x))
+
+
+
+    # Assuming df_samples is your DataFrame and algorithm_colors is your color dictionary
+    height_cm = 8
+    width_cm = 15
+    fig, ax = plt.subplots(figsize=(width_one_collum * cm_to_inch, height_cm * cm_to_inch))
+
+    # Plot one line per algorithm_name
+    for algorithm, group in df_samples.groupby("algorithm_name"):
+        if algorithm not in IMPLEMENTATIONS:
+            continue
+        #x_mapped = [unique_x.index(x) for x in group["total_nr_questions"]]
+        # x_mapped = range(len(unique_x))
+        unknown_absolut_per_question = list(group["unknown_absolut_per_question"])[0]
+
+        # probabilitie_drawing
+        probabilitie_drawing = list(group["probabilitie_drawing"])[0]
+        unknown_prob_per_quesiton = [probabilitie_drawing[i] for i in unique_x]
+
+        ax.plot(
+            x_pos,
+            unknown_prob_per_quesiton,
+            label=algorithm,
+            color=algorithm_colors.get(algorithm, "black"),  # fallback to black if not in dict
+            marker='o'
+        )
+
+    # Labeling
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(x_labels, rotation=0, size=8)
+    ax.tick_params(axis='y', labelsize=8)
+    ax.set_xlabel("Number of Questions", size=8)
+    ax.set_ylabel("Probability Drawing Unknown", size=8)
+    ax.legend(title="Algorithm", fontsize=6)
+
+    plt.grid(True)
+    plt.tight_layout()
+
+
+
+    plt.savefig(os.path.join(base_plot_dir, "Plot_unknown_per_question.png"),
+                format='png', dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
 
 
 def generate_plots(df_all):
@@ -418,6 +483,8 @@ def generate_plots(df_all):
             df_dataset_group = df_dataset_group.sort_values(by="algorithm_name")
             for _, row in df_dataset_group.iterrows():
                 algorithm = row["algorithm_name"]
+                if algorithm not in IMPLEMENTATIONS:
+                    continue
                 fpr_scores = row["fpr_scores"]
                 tpr_scores = row["tpr_scores"]
                 ax_TprFpr.plot(fpr_scores, tpr_scores, label=algorithm, marker='o', linestyle='-', color=algorithm_colors[algorithm])
@@ -472,6 +539,26 @@ def print_table_lines(df_all, dataset, flow_samples, impl):
     ]) + " \\\\\n"
     f.write(line)
 
+def print_table_lines_shorted(df_all, dataset, flow_samples, impl):
+    # Filter the DataFrame
+    filtered = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples) & (df_all['algorithm_name'] == impl)]
+
+    if not filtered.empty:
+        # Get the first row as a dict
+        row = filtered.iloc[0].to_dict()
+    else:
+        # Return dict with all column names and "--" as values
+        row = {col: '-' for col in df_all.columns}
+        row["algorithm_name"] = impl
+
+    line = " & ".join([
+        sanitize_latex(row["algorithm_name"]),
+        f"{float(sanitize_latex(row['AUROC'])) * 100:.3f}\%",
+        f"{float(sanitize_latex(row['AUPROUT'])) * 100:.3f}\%",
+        sanitize_latex(row["first_above_99"])
+    ]) + " \\\\\n"
+    f.write(line)
+
 if __name__ == "__main__":
 
     # Find all JSON files recursively
@@ -510,7 +597,8 @@ if __name__ == "__main__":
     #generate_plots(df_all)
     #generate_plots_specific(df_all)
     #generate_plots_specific2(df_all)
-    generate_plots_specific3(df_all)
+    generate_plots_specific3(df_all) #heatmap
+    generate_plots_specific4(df_all) # plot probability drawing vs nr quesitons
 
     # Write data to CSV
     with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
@@ -568,6 +656,29 @@ if __name__ == "__main__":
             f.write("\\midrule\n")
         f.write("\\bottomrule\n")
         f.write("\\end{tabular}\n\\end{table*}\n\n")
+
+        # write specific tabe Sample score results for day datasets _shorter version
+        f.write("\\begin{table}[t]\n\\centering\n")
+        f.write(f"\\caption{{Sample score results for day datasets}}\n")
+        f.write("\\begin{tabular}{lrrrrrrrrrr}\n")
+        f.write("\\toprule\n")
+        for dataset in ["TrainDay0_TestDay1234", "TrainDay012_TestDay34"]:
+            f.write(f"{sanitize_latex(dataset)} & AUROC & AUPROUT & $\geq 0.99\%$ \\\\\n")
+            f.write("\\midrule\n")
+
+            # Sort the dataframe
+            sorted_df = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples)].sort_values(
+                by='first_above_99',
+                key=lambda x: x.where(pd.notna(x), np.inf)  # Put NaNs at the bottom
+            )
+            sorted_IMPLEMENTATIONS = sorted_df['algorithm_name'].tolist()
+
+            # for impl in IMPLEMENTATIONS:
+            for impl in sorted_IMPLEMENTATIONS:
+                print_table_lines_shorted(df_all, dataset, "samples", impl)
+            f.write("\\midrule\n")
+        f.write("\\bottomrule\n")
+        f.write("\\end{tabular}\n\\end{table}\n\n")
 
         f.write("\\end{document}\n")
 
