@@ -24,7 +24,7 @@ IMPLEMENTATIONS = [
     "OneClassForestwoBootstrap",
     "IsolationForest",
     "NeuronalNetworkLoss",
-    "NeuronalNetwork",
+    #"NeuronalNetwork",
     "OneClassSVN",
     "EnergyFlowClassifier",
     "DistanceLOF",
@@ -177,6 +177,10 @@ def generate_plots_specific3(df_input):
         values='difference_to_baseline',
         aggfunc='mean'  # or min, or first, based on your use case
     )
+
+    # Filter rows to exclude 'Botnet', here is no information as all fail to detect
+    filtered_columns = [col for col in IMPLEMENTATIONS if col != 'Rand' and col in heatmap_diff.columns]
+    heatmap_diff = heatmap_diff.loc[heatmap_diff.index != 'Botnet', filtered_columns]
 
     # Plotting
     #plt.figure(figsize=(12, 8))

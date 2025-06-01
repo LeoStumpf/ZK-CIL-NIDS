@@ -8,7 +8,7 @@ IMPLEMENTATIONS = [
     "OneClassForest",
     "IsolationForest",
     "NeuronalNetworkLoss",
-    "NeuronalNetwork",
+    #"NeuronalNetwork",
     "OneClassSVN",
     "EnergyFlowClassifier",
     "DistanceLOF",
@@ -17,12 +17,12 @@ IMPLEMENTATIONS = [
 
 # Exact match replacements
 exact_replacements = {
-    'Random': 'rand',
+    'Random': 'Rand',
     'OneClassForestwoBootstrap': 'OCF-wB',
     'OneClassForest': 'OCF',
     'IsolationForest': 'iForest',
-    'NeuronalNetworkLoss': 'NN-Loss',
-    'NeuronalNetwork': 'NN',
+    'NeuronalNetworkLoss': 'OCN',
+    'NeuronalNetwork': 'OCN-wL',
     'OneClassSVN': 'OC-SVM',
     'EnergyFlowClassifier': 'EFC',
     'DistanceLOF': 'D-LOF',
@@ -46,4 +46,4 @@ def format_time(seconds):
 
 if __name__ == "__main__":
     for key, value in exact_replacements.items():
-        print(f"\\acrodef{{{key}}}{{{value}}}")
+        print(f"\\acrodef{{{value}}}{{{key}}}")
