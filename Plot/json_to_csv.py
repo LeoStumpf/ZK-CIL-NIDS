@@ -20,15 +20,14 @@ THRESHOLDS = [0.90, 0.95, 0.99]
 # Define datasets and implementations of interest
 TARGET_DATASETS = ["TrainDay0_TestDay1234"]
 IMPLEMENTATIONS = [
+	"DistanceLOF",
+	"EnergyFlowClassifier",
+	"NeuronalNetworkLoss",
+	"IsolationForest",
+	"LocalOutlierFactor",
     "OneClassForest",
     "OneClassForestwoBootstrap",
-    "IsolationForest",
-    "NeuronalNetworkLoss",
-    #"NeuronalNetwork",
     "OneClassSVN",
-    "EnergyFlowClassifier",
-    "DistanceLOF",
-    "LocalOutlierFactor",
     "Random"
 ]
 
@@ -85,7 +84,7 @@ LATEX_FILE = "output_tables.tex"
 
 def sanitize_latex(value):
     if isinstance(value, float):
-        return f"{value:.4f}"
+        return f"{value:.2f}"
     return str(value).replace("_", "\\_") if value is not None else "---"
 
 def generate_index_drawing(df_all):
@@ -124,7 +123,7 @@ def generate_plots_specific3(df_input):
         index='dataset_name',
         columns='algorithm_name',
         values='first_above_99',
-        aggfunc='min'  # or 'mean' if there are multiple values and you prefer average
+        aggfunc='min'
     )
 
     # Plot heatmap
@@ -187,7 +186,7 @@ def generate_plots_specific3(df_input):
     height_in_cm = 6
     plt.figure(figsize=(width_one_collum * cm_to_inch, height_in_cm * cm_to_inch))
     norm = TwoSlopeNorm(vmin=-10, vcenter=0, vmax=20)
-    sns.heatmap(
+    ax = sns.heatmap(
         heatmap_diff,
         annot=True,
         fmt=".0f",
@@ -206,15 +205,26 @@ def generate_plots_specific3(df_input):
     plt.ylabel('')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
+
+    text_size_border = 6
     # Set font sizes
     plt.rcParams.update({
-        'font.size': 8,
-        'axes.titlesize': 8,
-        'axes.labelsize': 8,
-        'xtick.labelsize': 8,
-        'ytick.labelsize': 8,
-        'legend.fontsize': 8,
+        'font.size': text_size_border,
+        'axes.titlesize': text_size_border,
+        'axes.labelsize': text_size_border,
+        'xtick.labelsize': text_size_border,
+        'ytick.labelsize': text_size_border,
+        'legend.fontsize': text_size_border,
     })
+
+    plt.xticks(fontsize=text_size_border)
+    plt.yticks(fontsize=text_size_border)
+
+    # Access colorbar and modify label/font sizes
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=text_size_border)
+    cbar.set_label(cbar.ax.get_ylabel(), fontsize=text_size_border)
+    plt.tight_layout()
     plt.savefig(os.path.join(base_plot_dir, "Plot_heatmap_relative.png"),
                 format='png', dpi=400, bbox_inches='tight', facecolor='white')
     plt.close()
@@ -431,10 +441,13 @@ def generate_plots_specific4(df_input):
     width_cm = 15
     fig, ax = plt.subplots(figsize=(width_one_collum * cm_to_inch, height_cm * cm_to_inch))
 
+    groups = dict(tuple(df_samples.groupby("algorithm_name")))
     # Plot one line per algorithm_name
-    for algorithm, group in df_samples.groupby("algorithm_name"):
-        if algorithm not in IMPLEMENTATIONS:
-            continue
+    #for algorithm, group in df_samples.groupby("algorithm_name"):
+    #    if algorithm not in IMPLEMENTATIONS:
+    #        continue
+    for algorithm in IMPLEMENTATIONS:
+        group = groups[algorithm]
         #x_mapped = [unique_x.index(x) for x in group["total_nr_questions"]]
         # x_mapped = range(len(unique_x))
         unknown_absolut_per_question = list(group["unknown_absolut_per_question"])[0]
@@ -442,6 +455,7 @@ def generate_plots_specific4(df_input):
         # probabilitie_drawing
         probabilitie_drawing = list(group["probabilitie_drawing"])[0]
         unknown_prob_per_quesiton = [probabilitie_drawing[i] for i in unique_x]
+        unknown_prob_per_quesiton = [unknown * 100 for unknown in unknown_prob_per_quesiton]
 
         ax.plot(
             x_pos,
@@ -547,7 +561,26 @@ def print_table_lines(df_all, dataset, flow_samples, impl):
     ]) + " \\\\\n"
     f.write(line)
 
+def bold_if_max(value, max_value):
+    try:
+        #val = float(sanitize_latex(value))
+        if value == max_value:
+            return f"\\textbf{{{value}}}"
+        else:
+            return value
+    except:
+        return value
+
 def print_table_lines_shorted(df_all, dataset, flow_samples, impl):
+    # Calculate max metrics per dataset
+    dataset_df = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples)
+                        & (df_all['algorithm_name'].isin(IMPLEMENTATIONS))
+                        ]
+    max_auroc = sanitize_latex(dataset_df['AUROC'].max() * 100)
+    max_auprin = sanitize_latex(dataset_df['AUPRIN'].max() * 100)
+    max_auprout = sanitize_latex(dataset_df['AUPROUT'].max() * 100)
+    min_qestion = sanitize_latex(dataset_df['first_above_99'].min())
+
     # Filter the DataFrame
     filtered = df_all[(df_all['dataset_name'] == dataset) & (df_all['flow/samples'] == flow_samples) & (df_all['algorithm_name'] == impl)]
 
@@ -561,10 +594,10 @@ def print_table_lines_shorted(df_all, dataset, flow_samples, impl):
 
     line = " & ".join([
         sanitize_latex(row["algorithm_name"]),
-        f"{float(sanitize_latex(row['AUROC'])) * 100:.2f}",
-        f"{float(sanitize_latex(row['AUPRIN'])) * 100:.2f}",
-        f"{float(sanitize_latex(row['AUPROUT'])) * 100:.2f}",
-        sanitize_latex(row["first_above_99"])
+        f"{bold_if_max(sanitize_latex(row['AUROC']* 100), max_auroc)}",
+        f"{bold_if_max(sanitize_latex(row['AUPRIN'] * 100), max_auprin)}",
+        f"{bold_if_max(sanitize_latex(row['AUPROUT'] * 100), max_auprout)}",
+        f"{bold_if_max(sanitize_latex(row['first_above_99']), min_qestion)}",
     ]) + " \\\\\n"
     f.write(line)
 
@@ -689,8 +722,8 @@ if __name__ == "__main__":
             sorted_IMPLEMENTATIONS = sorted_df['algorithm_name'].tolist()
             sorted_IMPLEMENTATIONS = [alg for alg in sorted_IMPLEMENTATIONS if alg in IMPLEMENTATIONS]
 
-            # for impl in IMPLEMENTATIONS:
-            for impl in sorted_IMPLEMENTATIONS:
+            for impl in IMPLEMENTATIONS:
+            #for impl in sorted_IMPLEMENTATIONS:
                 print_table_lines_shorted(df_all, dataset, "samples", impl)
             f.write("\\midrule\n")
         f.write("\\bottomrule\n")

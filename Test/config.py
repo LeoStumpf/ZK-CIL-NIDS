@@ -3,16 +3,17 @@ import numpy as np
 import os
 
 IMPLEMENTATIONS = [
-    "Random",
-    "OneClassForestwoBootstrap",
-    "OneClassForest",
-    "IsolationForest",
-    "NeuronalNetworkLoss",
+    #"Random",
+    #"OneClassForestwoBootstrap",
+    #"OneClassForest",
+    #"IsolationForest",
+    #"NeuronalNetworkLoss",
     #"NeuronalNetwork",
-    "OneClassSVN",
-    "EnergyFlowClassifier",
-    "DistanceLOF",
-    "LocalOutlierFactor"
+    #"OneClassSVN",
+    #"EnergyFlowClassifier",
+    #"DistanceLOF",
+    #"LocalOutlierFactor"
+    "OneClassSVN2",
 ]
 
 # Exact match replacements
@@ -20,7 +21,7 @@ exact_replacements = {
     'Random': 'Rand',
     'OneClassForestwoBootstrap': 'OCF-wB',
     'OneClassForest': 'OCF',
-    'IsolationForest': 'iForest',
+    'IsolationForest': 'IsoForest',
     'NeuronalNetworkLoss': 'OCN',
     'NeuronalNetwork': 'OCN-wL',
     'OneClassSVN': 'OC-SVM',
